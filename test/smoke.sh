@@ -35,6 +35,23 @@ rm -f "$tmp"
 got="$(ccsesh_iso_to_epoch '2026-04-18T00:00:00Z')"
 assert_eq "$got" "1776470400" "ccsesh_iso_to_epoch 2026-04-18T00:00:00Z"
 
+echo "== util.sh sanitizers =="
+
+got="$(printf 'hello\x01world\x7f' | ccsesh_strip_controls)"
+assert_eq "$got" "helloworld" "strip_controls drops SOH and DEL"
+
+got="$(printf 'a\tb\nc' | ccsesh_strip_controls)"
+assert_eq "$got" "$(printf 'a\tb\nc')" "strip_controls preserves tab and newline"
+
+got="$(printf 'a\tb\nc' | ccsesh_flatten)"
+assert_eq "$got" "a b c" "flatten replaces tab/newline with space"
+
+got="$(printf 'abcdefghij' | ccsesh_truncate 5)"
+assert_eq "$got" "abcde" "truncate to 5 chars"
+
+got="$(printf 'abc' | ccsesh_truncate 5)"
+assert_eq "$got" "abc" "truncate no-op when shorter"
+
 echo
 echo "passed: $_passed  failed: $_failed"
 [ "$_failed" -eq 0 ]
