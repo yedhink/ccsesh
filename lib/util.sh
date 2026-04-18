@@ -43,3 +43,20 @@ ccsesh_iso_to_epoch() {
     *) return 1 ;;
   esac
 }
+
+# Read stdin, drop C0 controls (0x00-0x08, 0x0b, 0x0c, 0x0e-0x1f) and DEL
+# (0x7f). Preserves \t (0x09) and \n (0x0a).
+ccsesh_strip_controls() {
+  LC_ALL=C tr -d '\000-\010\013\014\016-\037\177'
+}
+
+# Read stdin, replace \t and \n with single spaces, squeeze runs of spaces.
+ccsesh_flatten() {
+  LC_ALL=C tr '\t\n' '  ' | tr -s ' '
+}
+
+# Read stdin, emit at most $1 bytes (portable, no bash 4 features).
+ccsesh_truncate() {
+  local n="$1"
+  head -c "$n"
+}
