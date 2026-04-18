@@ -96,6 +96,24 @@ assert_eq "$got" "abcde" "truncate to 5 chars"
 got="$(printf 'abc' | ccsesh_truncate 5)"
 assert_eq "$got" "abc" "truncate no-op when shorter"
 
+echo "== sessions.sh discover =="
+
+fixture_root="/tmp/ccsesh-fx-$$"
+ccsesh_fixture_build "$fixture_root"
+export CCSESH_CLAUDE_HOME="$fixture_root"
+. "$REPO_DIR/lib/sessions.sh"
+
+# shellcheck disable=SC2207
+got=( $(ccsesh_sessions_discover | LC_ALL=C sort) )
+expected_a="$fixture_root/projects/-Users-ikigai-dev-neeto-products/aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa.jsonl"
+expected_b="$fixture_root/projects/-Users-ikigai-dev-neeto-products/bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb.jsonl"
+expected_c="$fixture_root/projects/-tmp-deleted-project/cccccccc-cccc-4ccc-cccc-cccccccccccc.jsonl"
+
+assert_eq "${#got[@]}" "3" "discover finds exactly 3 sessions"
+assert_eq "${got[0]}" "$expected_a" "discover[0] is session A"
+assert_eq "${got[1]}" "$expected_b" "discover[1] is session B"
+assert_eq "${got[2]}" "$expected_c" "discover[2] is session C"
+
 echo
 echo "passed: $_passed  failed: $_failed"
 [ "$_failed" -eq 0 ]
