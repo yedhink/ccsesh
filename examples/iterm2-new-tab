@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# ccsesh Enter-action helper: open the resumed session in a new iTerm2 tab.
+#
+# Usage: iterm2-new-tab <sessionId> <cwd>
+#
+# Install:
+#   cp examples/iterm2-new-tab ~/.local/bin/
+#   chmod +x ~/.local/bin/iterm2-new-tab
+#
+# Wire up via ~/.config/ccsesh/config.json:
+#   { "enter": { "command": "~/.local/bin/iterm2-new-tab {sid} {cwd}" } }
+#
+# Unlike the Ghostty and WezTerm helpers, this script does NOT resolve
+# `claude`'s absolute path. iTerm2's `create tab with default profile`
+# spawns the PROFILE's login shell (the same one you'd get opening a tab
+# manually), which loads your rc files — so `claude` ends up on PATH the
+# usual way. The command is then TYPED INTO that shell via `write text`,
+# which means it shows up visibly in the new tab's scrollback (some folks
+# like the transparency; some don't).
+set -u
+
+sid="${1:-}"
+cwd="${2:-}"
+
+if [ -z "$sid" ] || [ -z "$cwd" ]; then
+  echo "iterm2-new-tab: missing sid or cwd argument" >&2
+  exit 2
+fi
+
+if [ ! -d "$cwd" ]; then
+  echo "iterm2-new-tab: cwd not a directory: $cwd" >&2
+  exit 1
+fi
+
+# Shell-escape $cwd as a single-quoted string: wrap in '…' and replace any
+# embedded ' with '\''. Works for every filesystem path, and sits safely
+# inside AppleScript's double-quoted string literal (no backslash dance
+# required — AppleScript treats single quotes as plain characters).
+cwd_sq="'$(printf '%s' "$cwd" | sed "s/'/'\\\\''/g")'"
+
+# sid is a 36-char UUID (hex + dashes) — no escaping needed.
+#
+# Use iTerm's `write text` instead of `create tab with ... command "…"`.
+# The `command` form replaces the login shell with the given binary,
+# which means Homebrew/nvm/asdf additions to PATH are absent. `write text`
+# types the string into the new tab's default shell AFTER its rc files
+# have loaded, so PATH is whatever the user sees interactively.
+osascript <<APPLESCRIPT
+tell application "iTerm"
+  activate
+  tell current window
+    set newTab to (create tab with default profile)
+    tell current session of newTab
+      write text "cd -- $cwd_sq && claude --resume $sid"
+    end tell
+  end tell
+end tell
+APPLESCRIPT

@@ -24,8 +24,10 @@
 // Ready-made wrapper in examples/wezterm-new-tab handles the PATH issue.
 // { "enter": { "command": "~/.local/bin/wezterm-new-tab {sid} {cwd}" } }
 
-// ── iTerm2: resume in a new tab via AppleScript (PATH-sensitive) ──────
-// { "enter": { "command": "osascript -e 'tell application \"iTerm\" to tell current window to create tab with default profile command \"cd {cwd} && claude --resume {sid}\"'" } }
+// ── iTerm2: resume in a new tab ───────────────────────────────────────
+// Ready-made wrapper in examples/iterm2-new-tab types the command into
+// the tab's shell (so rc files load and PATH is intact).
+// { "enter": { "command": "~/.local/bin/iterm2-new-tab {sid} {cwd}" } }
 
 // ── Ghostty 1.3+: resume in a new tab ─────────────────────────────────
 // Ready-made wrapper in examples/ghostty-new-tab handles the PATH issue.

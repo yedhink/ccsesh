@@ -39,6 +39,14 @@ Same PATH gotcha as `ghostty-new-tab`: `wezterm cli spawn` execs the command dir
 
 `wezterm cli spawn` normally prints the new pane id to stdout; the wrapper suppresses that so fzf doesn't flash it between picks.
 
+### `iterm2-new-tab`
+
+Opens the resumed session in a new [iTerm2](https://iterm2.com) tab at the session's original `cwd`. Uses AppleScript's two-step form — create a blank tab with the default profile, then `write text` to type `cd … && claude --resume …` into the shell that iTerm2 just started.
+
+Because the command is typed into the new tab's *shell* (not handed to iTerm2's `command` field that replaces the shell), the shell's rc files load normally — `claude` ends up on PATH the usual way. As a side effect, the command is visible in the tab's scrollback. If you'd rather have the command run silently, switch to the `create tab with default profile command "…"` form and resolve `claude`'s absolute path up front like `ghostty-new-tab` does.
+
+First invocation triggers a macOS Automation permission prompt for iTerm — approve once, subsequent runs are silent.
+
 ## Contributing a new example
 
 PRs welcome. Guidelines:

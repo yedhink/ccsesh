@@ -91,15 +91,14 @@ the user a question — you MUST ask it and wait, do not pick for them.
        - $TERM_PROGRAM == "ghostty"     → Ghostty (needs 1.3+)
        - $TERM_PROGRAM == "iTerm.app"   → iTerm2
        - otherwise                      → ask the user which terminal
-     For WezTerm or Ghostty, copy the matching helper from the repo:
+     Copy the matching helper from the repo:
        cp <repo>/examples/wezterm-new-tab ~/.local/bin/
-       # or: cp <repo>/examples/ghostty-new-tab ~/.local/bin/
-       chmod +x ~/.local/bin/wezterm-new-tab   # or ghostty-new-tab
-     For iTerm2: no ready-made helper ships yet. Tell the user; offer
-     to write one using the pattern in examples/ghostty-new-tab (resolve
-     `claude`'s absolute path first to dodge the PATH-strip issue) or
-     point them at the inline recipe in
-     ~/.config/ccsesh/config.example.jsonc.
+       # or ghostty-new-tab, or iterm2-new-tab
+       chmod +x ~/.local/bin/<helper>
+     For terminals without a ready-made helper: point the user at the
+     inline recipe in ~/.config/ccsesh/config.example.jsonc and warn
+     them about the PATH-strip gotcha (tell them to resolve `claude`
+     to an absolute path if the inline form fails).
 
    For (c) "new tmux window": no helper script needed; use the inline
    recipe below.
@@ -118,9 +117,8 @@ the user a question — you MUST ask it and wait, do not pick for them.
      # (b) Ghostty
      { "enter": { "command": "~/.local/bin/ghostty-new-tab {sid} {cwd}" } }
 
-     # (b) iTerm2 (inline AppleScript — may fail if Homebrew's claude
-     #     is not on the stripped PATH that iTerm hands the new tab)
-     { "enter": { "command": "osascript -e 'tell application \"iTerm\" to tell current window to create tab with default profile command \"cd {cwd} && claude --resume {sid}\"'" } }
+     # (b) iTerm2
+     { "enter": { "command": "~/.local/bin/iterm2-new-tab {sid} {cwd}" } }
 
      # (c) tmux
      { "enter": { "command": "tmux new-window -c {cwd} -- claude --resume {sid}" } }
