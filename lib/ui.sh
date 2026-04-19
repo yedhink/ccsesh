@@ -97,9 +97,15 @@ _ccsesh_ui_preview_header_extract() {
   ' < "$f" 2>/dev/null
 }
 
-# Print a styled header block for the preview. Emits ANSI-colored lines.
-# Includes either the custom title (if set) or the session ID, project info,
-# timestamp + message count, and a truncated first-message snippet.
+# Print a styled, annotated header block for the preview. Each row starts
+# with a right-aligned 4-char label (dim), then the value in a color that
+# matches its role:
+#   Name  — custom title (green, only when set)
+#    ID   — session id (dim, or bold-cyan if no Name is shown)
+#   Repo  — project basename (cyan)
+#   Path  — full cwd (dim)
+#   Last  — max event timestamp + message count (dim)
+#   Open  — truncated first user-authored message (light)
 _ccsesh_ui_preview_header_print() {
   local f="$1"
   local sid cwd title ts count snippet proj_base
@@ -115,22 +121,33 @@ _ccsesh_ui_preview_header_print() {
   proj_base="$(basename "$cwd" 2>/dev/null)"
   [ -n "$proj_base" ] || proj_base="(unknown)"
 
-  # Line 1: title (bold green) + sid (dim) — or sid alone in bold cyan.
+  local lbl rs nm id_c repo dim light
+  lbl=$'\033[2;37m'   # dim gray for labels
+  rs=$'\033[0m'
+  nm=$'\033[1;32m'    # bold green — matches the list's [title] badge
+  id_c=$'\033[1;36m'  # bold cyan — used when the session has no title
+  repo=$'\033[36m'    # cyan for the project basename
+  dim=$'\033[2m'
+  light=$'\033[0;37m' # light gray for the opening-snippet excerpt
+
+  # Render one labeled row. $1 = label (will be right-aligned to 5 chars
+  # including the trailing colon), $2 = pre-colored value.
+  _hdr_row() {
+    printf '%s%5s%s  %s\n' "$lbl" "$1" "$rs" "$2"
+  }
+
   if [ -n "$title" ]; then
-    printf '\033[1;32m▌ %s\033[0m  \033[2m%s\033[0m\n' "$title" "$sid"
+    _hdr_row 'Name:' "${nm}${title}${rs}"
+    _hdr_row 'ID:'   "${dim}${sid}${rs}"
   else
-    printf '\033[1;36m▌ %s\033[0m\n' "$sid"
+    _hdr_row 'ID:'   "${id_c}${sid}${rs}"
   fi
-  # Line 2: project basename (cyan) + full cwd (dim).
-  printf '  \033[36m%s\033[0m  \033[2m%s\033[0m\n' "$proj_base" "$cwd"
-  # Line 3: timestamp + message count (both dim).
-  printf '  \033[2m%s  ·  %s messages\033[0m\n' "$ts" "$count"
-  # Line 4: first-snippet preview (light).
-  if [ -n "$snippet" ]; then
-    printf '  \033[0;37m%s\033[0m\n' "$snippet"
-  fi
-  # Separator.
-  printf '\033[2m────────────────────────────────────────\033[0m\n'
+  _hdr_row 'Repo:' "${repo}${proj_base}${rs}"
+  _hdr_row 'Path:' "${dim}${cwd}${rs}"
+  _hdr_row 'Last:' "${dim}${ts}  ·  ${count} messages${rs}"
+  [ -n "$snippet" ] && _hdr_row 'Open:' "${light}${snippet}${rs}"
+  printf '%s────────────────────────────────────────%s\n' "$dim" "$rs"
+  unset -f _hdr_row
 }
 
 # Print a styled preview: colored header block followed by 30 user-authored
