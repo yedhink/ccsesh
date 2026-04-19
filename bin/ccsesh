@@ -1,3 +1,78 @@
 #!/usr/bin/env bash
 set -u
-echo "ccsesh not yet implemented" >&2; exit 1
+
+CCSESH_VERSION="0.1.0"
+
+# Resolve repo dir through symlink (install.sh symlinks bin/ccsesh into PATH).
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  case "$SOURCE" in /*) ;; *) SOURCE="$DIR/$SOURCE" ;; esac
+done
+CCSESH_DIR="$(cd -P "$(dirname "$SOURCE")/.." && pwd)"
+
+# shellcheck disable=SC1091
+. "$CCSESH_DIR/lib/util.sh"
+# shellcheck disable=SC1091
+. "$CCSESH_DIR/lib/sessions.sh"
+# shellcheck disable=SC1091
+. "$CCSESH_DIR/lib/ui.sh"
+
+usage() {
+  cat <<EOF
+Usage: ccsesh [options]
+
+Fuzzy-search every Claude Code session on this machine and resume the
+selected one.
+
+Options:
+  --list              Print all sessions as TSV and exit (scripting).
+  --project <path>    Restrict to sessions whose original cwd matches <path>.
+  --since <spec>      Only sessions with recency newer than <spec> (Nd, Nh, Nm).
+  -h, --help          Show this help.
+  -v, --version       Print version.
+
+Environment:
+  CCSESH_CLAUDE_HOME  Override the Claude home dir (default: \$HOME/.claude).
+EOF
+}
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || { printf 'ccsesh: missing required command %q (install with: %s)\n' "$1" "$2" >&2; exit 127; }
+}
+
+ccsesh_main() {
+  local mode="interactive"
+  local project="" since=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --list) mode=list; shift ;;
+      --project) project="$2"; shift 2 ;;
+      --since) since="$2"; shift 2 ;;
+      -h|--help) usage; exit 0 ;;
+      -v|--version) printf 'ccsesh %s\n' "$CCSESH_VERSION"; exit 0 ;;
+      --) shift; break ;;
+      -*) printf 'ccsesh: unknown flag %q (see --help)\n' "$1" >&2; exit 2 ;;
+      *) printf 'ccsesh: unexpected argument %q (see --help)\n' "$1" >&2; exit 2 ;;
+    esac
+  done
+
+  require_cmd jq 'brew install jq (macOS) or apt/dnf/pacman install jq (Linux)'
+
+  local args=()
+  [ -n "$project" ] && args+=(--project "$project")
+  [ -n "$since" ] && args+=(--since "$since")
+
+  case "$mode" in
+    list)
+      ccsesh_sessions_list ${args[@]:+"${args[@]}"}
+      ;;
+    interactive)
+      require_cmd fzf 'brew install fzf (macOS) or apt/dnf/pacman install fzf (Linux)'
+      ccsesh_ui_run ${args[@]:+"${args[@]}"}
+      ;;
+  esac
+}
+
+ccsesh_main "$@"
