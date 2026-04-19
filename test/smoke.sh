@@ -407,6 +407,53 @@ else
   _passed=$((_passed+1)); echo "  ok  short session: no ellipsis added"
 fi
 
+echo "== custom enter: config reader =="
+
+# Fresh fixture dir per test run so we can build known configs without
+# touching the real ~/.config.
+enter_cfg_dir="/tmp/ccsesh-enter-$$"
+rm -rf "$enter_cfg_dir"
+mkdir -p "$enter_cfg_dir"
+
+# 1. No config file at all: CCSESH_CONFIG points at a path that does not exist.
+export CCSESH_CONFIG="$enter_cfg_dir/missing.json"
+got="$(_ccsesh_config_enter_cmd)"
+assert_eq "$got" "" "config reader: missing file returns empty"
+
+# 2. Valid config with .enter.command set.
+cat > "$enter_cfg_dir/valid.json" <<'JSON'
+{ "enter": { "command": "my-script {sid} {cwd}" } }
+JSON
+export CCSESH_CONFIG="$enter_cfg_dir/valid.json"
+got="$(_ccsesh_config_enter_cmd)"
+assert_eq "$got" "my-script {sid} {cwd}" "config reader: returns .enter.command verbatim"
+
+# 3. Valid JSON but no .enter key.
+cat > "$enter_cfg_dir/empty.json" <<'JSON'
+{}
+JSON
+export CCSESH_CONFIG="$enter_cfg_dir/empty.json"
+got="$(_ccsesh_config_enter_cmd)"
+assert_eq "$got" "" "config reader: empty object returns empty"
+
+# 4. .enter.command is an empty string.
+cat > "$enter_cfg_dir/blank.json" <<'JSON'
+{ "enter": { "command": "" } }
+JSON
+export CCSESH_CONFIG="$enter_cfg_dir/blank.json"
+got="$(_ccsesh_config_enter_cmd)"
+assert_eq "$got" "" "config reader: blank command returns empty"
+
+# 5. Malformed JSON.
+printf '%s\n' 'this is not json {{' > "$enter_cfg_dir/malformed.json"
+export CCSESH_CONFIG="$enter_cfg_dir/malformed.json"
+got="$(_ccsesh_config_enter_cmd)"
+assert_eq "$got" "" "config reader: malformed JSON returns empty"
+
+# Cleanup so downstream tests are not influenced by this env var.
+unset CCSESH_CONFIG
+rm -rf "$enter_cfg_dir"
+
 echo
 echo "passed: $_passed  failed: $_failed"
 [ "$_failed" -eq 0 ]
