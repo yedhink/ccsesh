@@ -18,18 +18,6 @@ cd ccsesh
 
 The installer symlinks `bin/ccsesh` into `~/.local/bin/` so `git pull` will keep you up to date. It will install `jq` and `fzf` via your package manager if they are missing.
 
-**Optional — shell integration.** By default, after you resume a session with `ccsesh` and later exit `claude`, your parent shell returns to the directory you were in when you launched `ccsesh` (a child process cannot change the parent's cwd). To have your shell land in the session's project directory instead, source the tiny wrapper function for your shell:
-
-```bash
-# bash or zsh
-echo 'source /path/to/ccsesh/shell/ccsesh.bash' >> ~/.zshrc   # or ~/.bashrc / ~/.bash_profile
-
-# fish
-echo 'source /path/to/ccsesh/shell/ccsesh.fish' >> ~/.config/fish/config.fish
-```
-
-Pass `--dont-cd` on any invocation to keep your current cwd unchanged even with the wrapper in place. Without the wrapper, `--dont-cd` is a no-op — direct invocation can't alter the parent shell either way.
-
 ## Usage
 
 ```bash

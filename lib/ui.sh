@@ -294,20 +294,8 @@ operators: foo bar (AND)  ^foo (prefix)  foo$ (suffix)  !foo (negate)  '\''foo (
   # Field 6 in our fzf input is the raw custom_title (see _ccsesh_ui_build_lines).
   title="$(printf '%s' "$line" | cut -f6)"
 
-  # Shell-wrapper integration. When CCSESH_SHELL_MODE=1, the parent shell is
-  # capturing our stdout to eval() the Enter action, so we must NOT exec here
-  # (the wrapper does the cd+claude in the parent shell so cwd persists after
-  # claude exits). Ctrl-O's human-readable box is redirected to stderr in
-  # this mode so it doesn't pollute the eval string.
-  local shell_mode=0 dont_cd=0 human_fd=1
-  [ "${CCSESH_SHELL_MODE:-0}" = "1" ] && shell_mode=1 human_fd=2
-  [ "${CCSESH_DONT_CD:-0}" = "1" ] && dont_cd=1
-
   case "$key" in
     ctrl-o)
-      # The whole box is redirected to human_fd so it shows on the terminal
-      # even when shell_mode=1 (which captures stdout for eval).
-      {
       proj_base="$(basename "$cwd" 2>/dev/null)"
       [ -n "$proj_base" ] || proj_base="(unknown)"
       local cwd_q
@@ -395,7 +383,6 @@ operators: foo bar (AND)  ^foo (prefix)  foo$ (suffix)  !foo (negate)  '\''foo (
 
       printf '%s╰%s╯%s\n' "$c_border" "$_bot_dashes" "$c_reset"
       unset -f _print_line
-      } >&"$human_fd"
       return 0 ;;
     *)
       if [ ! -d "$cwd" ]; then
@@ -404,20 +391,6 @@ operators: foo bar (AND)  ^foo (prefix)  foo$ (suffix)  !foo (negate)  '\''foo (
         return 1
       fi
       command -v claude >/dev/null 2>&1 || { echo "ccsesh: claude not on PATH" >&2; return 127; }
-      if [ "$shell_mode" = "1" ]; then
-        # Shell wrapper mode: emit the command for the parent shell to eval.
-        # Default: bare `cd && claude` so the cwd persists in the parent shell
-        # after claude exits. With --dont-cd: wrap in a subshell so cwd does
-        # not leak into the parent.
-        local cwd_q_eval
-        cwd_q_eval="$(printf '%q' "$cwd")"
-        if [ "$dont_cd" = "1" ]; then
-          printf '( cd -- %s && claude --resume %s )\n' "$cwd_q_eval" "$sid"
-        else
-          printf 'cd -- %s && claude --resume %s\n' "$cwd_q_eval" "$sid"
-        fi
-        return 0
-      fi
       cd -- "$cwd" && exec claude --resume "$sid"
       ;;
   esac

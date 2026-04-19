@@ -84,31 +84,11 @@ path_advice() {
   esac
 }
 
-shell_wrapper_advice() {
-  local shell_name; shell_name="$(basename "${SHELL:-/bin/sh}")"
-  info ""
-  info "Optional: have your shell cd into the session's project dir AFTER"
-  info "claude exits. Source the wrapper function from your shell config:"
-  case "$shell_name" in
-    fish) info "  source $CCSESH_DIR/shell/ccsesh.fish    # in ~/.config/fish/config.fish" ;;
-    zsh)  info "  source $CCSESH_DIR/shell/ccsesh.bash    # in ~/.zshrc" ;;
-    bash)
-      if [ "$OS" = darwin ]; then info "  source $CCSESH_DIR/shell/ccsesh.bash    # in ~/.bash_profile"
-      else                         info "  source $CCSESH_DIR/shell/ccsesh.bash    # in ~/.bashrc"
-      fi ;;
-    *) info "  source $CCSESH_DIR/shell/ccsesh.bash" ;;
-  esac
-  info "Without the wrapper, resume still works — it just doesn't leave your"
-  info "shell in the project dir. Pass --dont-cd to suppress the cd even with"
-  info "the wrapper in place."
-}
-
 main() {
   check_cmd claude || warn "claude not on PATH. ccsesh will install but resume won't work until you install Claude Code."
   install_deps || { warn "dependency install failed; aborting"; exit 1; }
   install_symlink
   path_advice
-  shell_wrapper_advice
   info ""
   info "✓ installed — run 'ccsesh' to get started"
 }
