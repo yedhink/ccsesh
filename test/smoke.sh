@@ -133,6 +133,23 @@ assert_eq "$got" "Reverse a linked list in Rust please" "history_display picks m
 got="$(ccsesh_history_display 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb'; echo "[rc=$?]")"
 assert_match "$got" '^\[rc=1\]$' "history_display returns non-zero when no match"
 
+echo "== sessions.sh summary =="
+
+got="$(ccsesh_session_summary "$expected_a" 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa')"
+assert_eq "$got" "Reverse a linked list in Rust please" "session A: prefers history.jsonl display"
+
+got="$(ccsesh_session_summary "$expected_b" 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb')"
+assert_eq "$got" "Refactor the queue consumer to batch acks." "session B: falls back to .jsonl array text block"
+
+got="$(ccsesh_session_summary "$expected_c" 'cccccccc-cccc-4ccc-cccc-cccccccccccc')"
+assert_eq "$got" "What happened to this project?" "session C: falls back to .jsonl string content"
+
+# Empty-session fallback
+empty="$(mktemp)"; printf '\n' > "$empty"
+got="$(ccsesh_session_summary "$empty" 'zzzzzzzz-zzzz-4zzz-zzzz-zzzzzzzzzzzz')"
+assert_eq "$got" "<no prompt yet>" "empty session: final fallback"
+rm -f "$empty"
+
 echo
 echo "passed: $_passed  failed: $_failed"
 [ "$_failed" -eq 0 ]
