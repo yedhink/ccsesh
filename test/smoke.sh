@@ -222,6 +222,27 @@ assert_eq "$line_count" "3" "--list against fixture: 3 rows"
 rc=0; "$REPO_DIR/bin/ccsesh" --bogus >/dev/null 2>&1 || rc=$?
 assert_eq "$rc" "2" "unknown flag exits 2"
 
+echo "== ui.sh preview =="
+
+. "$REPO_DIR/lib/ui.sh"
+
+preview="$(ccsesh_ui_preview "$expected_a")"
+assert_match "$preview" 'Write a function that reverses a linked list' "preview A includes the prompt"
+# Meta/<command-name> entry must be excluded
+if printf '%s' "$preview" | grep -q '<command-name>'; then
+  _failed=$((_failed+1)); echo "  FAIL preview A excludes <command-name>"
+else
+  _passed=$((_passed+1)); echo "  ok  preview A excludes <command-name>"
+fi
+
+preview="$(ccsesh_ui_preview "$expected_b")"
+assert_match "$preview" 'Refactor the queue consumer' "preview B pulls array-text block"
+if printf '%s' "$preview" | grep -q 'tool_result'; then
+  _failed=$((_failed+1)); echo "  FAIL preview B excludes tool_result"
+else
+  _passed=$((_passed+1)); echo "  ok  preview B excludes tool_result"
+fi
+
 echo
 echo "passed: $_passed  failed: $_failed"
 [ "$_failed" -eq 0 ]
