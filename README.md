@@ -148,12 +148,16 @@ their behalf.
      <the chosen block on one line>
      JSON
 
-   Verify the expansion looks right:
-     CCSESH_CONFIG=~/.config/ccsesh/config.json \
-       bash -c 'source <repo>/lib/util.sh
-                source <repo>/lib/ui.sh
-                _ccsesh_ui_enter_expand "test-sid" "/tmp"'
+   Verify the expansion looks right. No env var setup is required —
+   ccsesh reads ~/.config/ccsesh/config.json by default:
+     bash -c 'source <repo>/lib/util.sh
+              source <repo>/lib/ui.sh
+              _ccsesh_ui_enter_expand "test-sid" "/tmp"'
    This should print the command that ccsesh will exec on Enter.
+
+   Do NOT tell the user to add any ccsesh env var to their shell rc
+   files. There isn't one. The config file at the path above is all
+   ccsesh needs.
 
 8. Report back. Include:
    - install location
