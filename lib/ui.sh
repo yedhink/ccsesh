@@ -85,13 +85,14 @@ _ccsesh_ui_preview_header_extract() {
     | (if $raw_ts != "" then ($raw_ts | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601 | strflocaltime("%Y-%m-%d %H:%M %z")) else "" end) as $ts
     | ([$R[] | select((.type == "user" or .type == "assistant") and ((.isMeta // false) | not))] | length) as $count
     | ([$R[] | select(.type == "user" and ((.isMeta // false) | not)) | (.message.content | user_text) | select(. != "")][0] // "") as $raw_snippet
-    | ($raw_snippet
-       | one_line
+    | ($raw_snippet | one_line) as $flat
+    | ($flat
        | . as $s
        | [match("[.!?](\\s|$)"; "g")] as $ms
        | (if ($ms | length) >= 2 then $s[0:($ms[1].offset + 1)] else $s end)
        | .[0:240]
-      ) as $snippet
+      ) as $trimmed
+    | (if ($trimmed | length) < ($flat | length) then (($trimmed | sub("\\s+$"; "")) + " …") else $trimmed end) as $snippet
     | [
         ($sid | one_line),
         ($cwd | one_line),
