@@ -68,6 +68,19 @@ name:bugwatch                       # only sessions you renamed with "bugwatch" 
 
 Free text matches against the visible display field, which includes the custom title (if any), the short summary, and the first ~500 chars of user-authored content from the session (dimmed in the list, fully visible in the preview pane). Sessions you have renamed in Claude Code show a green `[title]` badge at the start of the row.
 
+**Editing the query (fzf readline bindings):**
+
+| Key | Action |
+|---|---|
+| `Ctrl-U`        | clear the whole query |
+| `Ctrl-W`        | delete word before cursor |
+| `Alt-Backspace` | delete word before cursor |
+| `Ctrl-K`        | delete from cursor to end of line |
+| `Ctrl-A` / `Ctrl-E` | jump to start / end of line |
+| `Backspace`     | delete single char |
+
+See the [fzf man page](https://github.com/junegunn/fzf/blob/master/man/man1/fzf.1) for the full list of key bindings and search-mode options.
+
 ## How it works
 
 Claude Code writes one directory per project under `~/.claude/projects/<encoded-path>/`, with one `<session-id>.jsonl` per session. Those encoded path names are lossy (they replace `/` with `-`, which collides with hyphens in real directory names), so `ccsesh` ignores them and reads each session's `cwd` field directly out of the `.jsonl`. Summaries prefer `~/.claude/history.jsonl`'s `display` field (the exact text you typed), falling back to the first non-meta user message in the transcript. The store layout is reverse-engineered and may change; open an issue if something drifts.
