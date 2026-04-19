@@ -55,7 +55,10 @@ their behalf.
      jq/fzf yourself; the installer handles those.
 
 3. Clone the repo.
-   - `git clone https://github.com/yedhink/ccsesh.git <chosen-path>`
+   - `git clone git@github.com:yedhink/ccsesh.git <chosen-path>`
+     (the repo is private, so SSH-over-port-22 is the only working clone
+     URL; HTTPS cloning will prompt for credentials and fail under an
+     AI agent's non-interactive shell)
    - If the path already exists as a ccsesh checkout, run
      `git -C <chosen-path> pull` instead. If it exists and is NOT a
      ccsesh checkout, stop and ask.
@@ -192,7 +195,7 @@ Troubleshooting cheatsheet:
 <summary><b>Prefer to install manually?</b></summary>
 
 ```bash
-git clone https://github.com/yedhink/ccsesh.git
+git clone git@github.com:yedhink/ccsesh.git
 cd ccsesh
 ./install.sh
 ```
