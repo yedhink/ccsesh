@@ -12,18 +12,9 @@ You jump between projects all day. Claude Code keeps per-project session history
 
 ## Install
 
-```bash
-git clone https://github.com/yedhink/ccsesh.git
-cd ccsesh
-./install.sh
-```
+### Prompt for an AI agent to install on your behalf
 
-The installer symlinks `bin/ccsesh` into `~/.local/bin/` so `git pull` will keep you up to date. It will install `jq` and `fzf` via your package manager if they are missing.
-
-<details>
-<summary><b>Prompt for an AI agent to install on your behalf</b></summary>
-
-Paste the block below into your coding assistant (Claude Code, Cursor, Windsurf, Codex, Aider, etc.) and let it run the install end to end.
+The fastest path: paste the block below into your coding assistant (Claude Code, Cursor, Windsurf, Codex, Aider, etc.) and let it handle everything — clone, dependencies, PATH setup, and an optional interactive step where it configures the Enter action for your terminal (new WezTerm / Ghostty tab, new tmux window, your own script, or leave as the default).
 
 ````text
 Install ccsesh, a CLI that fuzzy-searches and resumes Claude Code sessions
@@ -33,75 +24,170 @@ Context: Claude Code's built-in `claude --resume` only lists sessions for
 the current directory. ccsesh reads the global session store at
 ~/.claude/projects/ and surfaces every session in one fzf picker.
 
-Execute the steps below in order. Report progress as you go and surface any
-errors verbatim — do not guess around them.
+Execute the steps below in order. Surface errors verbatim. Step 6 ASKS
+the user a question — you MUST ask it and wait, do not pick for them.
 
 1. Pick an install location.
    Default to ~/dev/ccsesh. If ~/dev does not exist, prefer a sibling of
-   whatever directory the user usually clones repos into. Ask the user only
-   if neither is obvious.
+   whatever directory the user usually clones repos into. Ask only if
+   neither is obvious.
 
 2. Verify prerequisites.
-   - `claude --version` must succeed. If it does not, tell the user ccsesh
-     is useless without Claude Code and stop; do not attempt to install it.
-   - Note whether `git`, `jq`, and `fzf` are on PATH. Do not install jq/fzf
-     yourself — the installer handles those.
+   - `claude --version` must succeed. If it does not, ccsesh is useless
+     without Claude Code — stop; do not try to install it.
+   - Note whether `git`, `jq`, and `fzf` are on PATH. Do not install
+     jq/fzf yourself; the installer handles those.
 
 3. Clone the repo.
-   - Run: `git clone https://github.com/yedhink/ccsesh.git <chosen-path>`
-   - If the path already exists as a ccsesh checkout, `git -C <path> pull`
-     instead. If it exists and is not a ccsesh checkout, stop and ask.
+   - `git clone https://github.com/yedhink/ccsesh.git <chosen-path>`
+   - If the path already exists as a ccsesh checkout, run
+     `git -C <chosen-path> pull` instead. If it exists and is NOT a
+     ccsesh checkout, stop and ask.
 
 4. Run the installer.
-   - `cd <chosen-path>`
-   - `./install.sh`
-   The installer will:
-     * detect the OS (macOS/Linux — aborts on anything else)
-     * install jq and fzf via brew / apt / dnf / pacman if missing
-     * create a symlink ~/.local/bin/ccsesh -> <repo>/bin/ccsesh (idempotent;
-       re-running is safe)
-     * print a PATH-setup line for the user's detected shell if
-       ~/.local/bin is not already on PATH
-   Read and relay the installer's output to the user. If the installer
-   exits non-zero, stop and surface the error — do not retry blindly.
+   - `cd <chosen-path> && ./install.sh`
+   The installer:
+     * detects OS (macOS/Linux — aborts on anything else)
+     * installs jq and fzf via brew / apt / dnf / pacman if missing
+     * symlinks ~/.local/bin/ccsesh -> <repo>/bin/ccsesh (idempotent)
+     * copies <repo>/config.example.jsonc to ~/.config/ccsesh/
+     * prints PATH advice for the detected shell if ~/.local/bin is
+       not already on PATH
+   Relay installer output. If it exits non-zero, stop — don't retry blindly.
 
-5. Verify the install.
-   - `which ccsesh` → should resolve to ~/.local/bin/ccsesh (or the path
-     the installer reported). If it does not, the user likely needs to
-     apply the PATH-setup line from step 4; point them at the exact line
-     and the exact rc file to edit.
-   - `ccsesh --version` → should print `ccsesh <semver>`.
-   - `ccsesh --list | head -3` → should print up to 3 tab-separated rows.
-     Zero rows is fine and means either no sessions exist yet or
-     ~/.claude/projects/ is empty; note this rather than treat it as an
-     error.
+5. Verify the basic install.
+   - `which ccsesh` resolves to ~/.local/bin/ccsesh (or wherever the
+     installer reported). If not, apply the PATH-setup line from step 4
+     and tell the user which rc file to add it to.
+   - `ccsesh --version` prints `ccsesh <semver>`.
+   - `ccsesh --list | head -3` prints up to 3 TSV rows. Zero rows is fine
+     and just means the user has no Claude sessions yet (or
+     ~/.claude/projects/ is empty). Note it, don't treat it as an error.
 
-6. Report back. Include:
+6. Ask the user about the Enter action.
+   By default, pressing Enter on a session replaces the current shell
+   with `claude --resume <sid>` — so ccsesh exits when you hit Enter.
+   Many users prefer opening the resume in a new tab/window so ccsesh
+   stays up for the next pick. Ask the user this question verbatim and
+   WAIT for their answer:
+
+   > "Pressing Enter on a session — what should happen?
+   >   (a) Replace my current shell with claude --resume (the default)
+   >   (b) Open the session in a new tab of my current terminal
+   >   (c) Open the session in a new tmux window (only if you use tmux)
+   >   (d) Run a custom command I'll describe
+   >   (e) I'll configure it later myself"
+
+   If the user chose (a) or (e): skip to step 8. No config needed.
+
+7. Configure the chosen Enter action.
+
+   For (b) "new tab in current terminal":
+     Detect which terminal the user is running right now:
+       - $WEZTERM_PANE is set           → WezTerm
+       - $TERM_PROGRAM == "ghostty"     → Ghostty (needs 1.3+)
+       - $TERM_PROGRAM == "iTerm.app"   → iTerm2
+       - otherwise                      → ask the user which terminal
+     For WezTerm or Ghostty, copy the matching helper from the repo:
+       cp <repo>/examples/wezterm-new-tab ~/.local/bin/
+       # or: cp <repo>/examples/ghostty-new-tab ~/.local/bin/
+       chmod +x ~/.local/bin/wezterm-new-tab   # or ghostty-new-tab
+     For iTerm2: no ready-made helper ships yet. Tell the user; offer
+     to write one using the pattern in examples/ghostty-new-tab (resolve
+     `claude`'s absolute path first to dodge the PATH-strip issue) or
+     point them at the inline recipe in
+     ~/.config/ccsesh/config.example.jsonc.
+
+   For (c) "new tmux window": no helper script needed; use the inline
+   recipe below.
+
+   For (d) "custom command": ask the user for the script path OR the
+   exact shell command. Explain the contract: the script receives sid
+   as $1 and cwd as $2; or the command may use {sid} / {cwd} as
+   placeholders (both auto shell-escaped by ccsesh).
+
+   Then write ~/.config/ccsesh/config.json with exactly ONE of the
+   following (pick the one matching the user's choice):
+
+     # (b) WezTerm
+     { "enter": { "command": "~/.local/bin/wezterm-new-tab {sid} {cwd}" } }
+
+     # (b) Ghostty
+     { "enter": { "command": "~/.local/bin/ghostty-new-tab {sid} {cwd}" } }
+
+     # (b) iTerm2 (inline AppleScript — may fail if Homebrew's claude
+     #     is not on the stripped PATH that iTerm hands the new tab)
+     { "enter": { "command": "osascript -e 'tell application \"iTerm\" to tell current window to create tab with default profile command \"cd {cwd} && claude --resume {sid}\"'" } }
+
+     # (c) tmux
+     { "enter": { "command": "tmux new-window -c {cwd} -- claude --resume {sid}" } }
+
+     # (d) user's script
+     { "enter": { "command": "<user-path-or-command> {sid} {cwd}" } }
+
+   Use mkdir -p first:
+     mkdir -p ~/.config/ccsesh
+     cat > ~/.config/ccsesh/config.json <<'JSON'
+     <the chosen block on one line>
+     JSON
+
+   Verify the expansion looks right:
+     CCSESH_CONFIG=~/.config/ccsesh/config.json \
+       bash -c 'source <repo>/lib/util.sh
+                source <repo>/lib/ui.sh
+                _ccsesh_ui_enter_expand "test-sid" "/tmp"'
+   This should print the command that ccsesh will exec on Enter.
+
+8. Report back. Include:
    - install location
-   - output of `which ccsesh` and `ccsesh --version`
-   - count of sessions ccsesh can see (`ccsesh --list | wc -l`)
-   - any manual PATH step the user still needs to apply
+   - `which ccsesh` and `ccsesh --version` output
+   - number of sessions ccsesh can see (`ccsesh --list | wc -l`)
+   - any PATH step the user still needs to apply manually
+   - which Enter-action recipe (if any) was configured
 
 Rules:
-- Do NOT edit the user's shell rc file automatically. Print the exact line
-  the installer suggested and tell the user which file to add it to.
-- Do NOT use sudo. The installer deliberately runs unprivileged; if
-  something appears to need root, stop and ask.
-- Do NOT switch branches, pick a fork, or pin a tag. Use the default branch
-  of yedhink/ccsesh.
-- Do NOT proceed past a failing step. Surface the exact error and ask.
+- Do NOT edit the user's shell rc file automatically. Print the line and
+  tell the user which file to add it to.
+- Do NOT use sudo. The installer avoids it by design.
+- Do NOT switch branches, pick a fork, or pin a tag. Use the default
+  branch of yedhink/ccsesh.
+- Do NOT skip step 6's question or pick an option on the user's behalf.
+- Do NOT proceed past a failing step. Surface the error and ask.
 
 Troubleshooting cheatsheet:
 - `command not found: brew` on macOS → direct the user to https://brew.sh
-  and stop; the installer cannot complete without it.
-- `permission denied` creating the symlink → ensure `~/.local/bin` exists
-  and is user-writable; do not sudo.
-- `ccsesh: missing jq` or `missing fzf` at runtime → re-run ./install.sh;
+  and stop; the installer can't complete without it.
+- `permission denied` creating the symlink → ensure ~/.local/bin is
+  user-writable; do not sudo.
+- `ccsesh: missing jq` / `missing fzf` at runtime → re-run ./install.sh;
   the user may have declined the package install earlier.
-- `No conversation found with session ID` after resume → ccsesh cds into
-  the original project dir before running `claude --resume`; if that dir
-  was deleted, ccsesh prints a clear error without launching claude.
+- `No conversation found with session ID` after resume → ccsesh cd's
+  into the original project dir; if that dir was deleted, ccsesh prints
+  a clear error without launching claude.
+- `bash: line 0: exec: claude: not found` when using a custom tab-opener
+  → the terminal is exec'ing the command via a PATH-stripped login
+  shell. The ready-made helpers in <repo>/examples/ already resolve
+  `claude`'s absolute path to sidestep this; custom scripts need to do
+  the same.
 ````
+
+<details>
+<summary><b>Prefer to install manually?</b></summary>
+
+```bash
+git clone https://github.com/yedhink/ccsesh.git
+cd ccsesh
+./install.sh
+```
+
+The installer symlinks `bin/ccsesh` into `~/.local/bin/` so `git pull` keeps you up to date, installs `jq` and `fzf` via your package manager if missing, and copies `~/.config/ccsesh/config.example.jsonc` with annotated recipes for the Enter action.
+
+To configure a custom Enter action after install:
+1. Pick a recipe from `~/.config/ccsesh/config.example.jsonc` (WezTerm, Ghostty, iTerm2, tmux, or your own script).
+2. Most terminal "new tab" recipes need a helper script — copy the matching one from the repo's [`examples/`](./examples) directory into `~/.local/bin/` and `chmod +x`.
+3. Create `~/.config/ccsesh/config.json` with the block from the chosen recipe (strip the `// ` comments).
+
+See the [Custom Enter action](#custom-enter-action) section below for details on placeholders and stay-in-picker behavior.
 
 </details>
 
