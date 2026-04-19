@@ -26,16 +26,94 @@ _ccsesh_ui_preview_render() {
     | sed 's/^/> /'
 }
 
-# Print up to 30 human-authored text snippets from a session .jsonl, each on
-# its own line prefixed with "> ". Skips isMeta rows, tool_result, and records
-# that start with <command-/<local-command-/<system-reminder>.
-# If $2 (query) is non-empty, pipe through grep --color to highlight matches
-# without filtering — uses the "|$" trick so every line passes grep but only
-# matches are colored.
+# Extract header metadata for the preview pane in one jq pass. Emits 6 fields
+# newline-separated (one per line) to dodge bash's habit of collapsing
+# consecutive tabs when IFS=tab. Each field has its own tabs/newlines
+# stripped by gsub so the line-based parser can't be confused.
+# Order: sid, cwd, custom_title, iso_ts, count, first_snippet.
+_ccsesh_ui_preview_header_extract() {
+  local f="$1"
+  jq -Rsr '
+    def user_text:
+      . as $c
+      | if ($c | type) == "string" then
+          (if ($c | test("^<(command-|local-command-|system-reminder)")) then "" else $c end)
+        elif ($c | type) == "array" then
+          ([ $c[]
+            | select(.type == "text" and (.text // "") != "")
+            | select(.text | test("^<(command-|local-command-|system-reminder)") | not)
+            | .text
+          ][0] // "")
+        else "" end;
+    def one_line: gsub("[\t\n\r]"; " ") | gsub("  +"; " ");
+
+    (split("\n") | map(fromjson?) | map(select(. != null))) as $R
+    | ([$R[] | select(.sessionId != null) | .sessionId] | first // "") as $sid
+    | ([$R[] | select(.cwd != null) | .cwd] | first // "") as $cwd
+    | ([$R[] | select(.type == "custom-title") | .customTitle // empty] | first // "") as $title
+    | ([$R[] | .timestamp // empty] | max // "") as $raw_ts
+    | (if $raw_ts != "" then ($raw_ts | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601 | strflocaltime("%Y-%m-%d %H:%M %z")) else "" end) as $ts
+    | ([$R[] | select((.type == "user" or .type == "assistant") and ((.isMeta // false) | not))] | length) as $count
+    | ([$R[] | select(.type == "user" and ((.isMeta // false) | not)) | (.message.content | user_text) | select(. != "")][0] // "") as $snippet
+    | [
+        ($sid | one_line),
+        ($cwd | one_line),
+        ($title | one_line),
+        ($ts | one_line),
+        ($count | tostring),
+        ($snippet | one_line | .[0:240])
+      ]
+    | .[]
+  ' < "$f" 2>/dev/null
+}
+
+# Print a styled header block for the preview. Emits ANSI-colored lines.
+# Includes either the custom title (if set) or the session ID, project info,
+# timestamp + message count, and a truncated first-message snippet.
+_ccsesh_ui_preview_header_print() {
+  local f="$1"
+  local sid cwd title ts count snippet proj_base
+  {
+    IFS= read -r sid || sid=""
+    IFS= read -r cwd || cwd=""
+    IFS= read -r title || title=""
+    IFS= read -r ts || ts=""
+    IFS= read -r count || count=""
+    IFS= read -r snippet || snippet=""
+  } < <(_ccsesh_ui_preview_header_extract "$f")
+  [ -n "$sid" ] || return 0
+  proj_base="$(basename "$cwd" 2>/dev/null)"
+  [ -n "$proj_base" ] || proj_base="(unknown)"
+
+  # Line 1: title (bold green) + sid (dim) — or sid alone in bold cyan.
+  if [ -n "$title" ]; then
+    printf '\033[1;32m▌ %s\033[0m  \033[2m%s\033[0m\n' "$title" "$sid"
+  else
+    printf '\033[1;36m▌ %s\033[0m\n' "$sid"
+  fi
+  # Line 2: project basename (cyan) + full cwd (dim).
+  printf '  \033[36m%s\033[0m  \033[2m%s\033[0m\n' "$proj_base" "$cwd"
+  # Line 3: timestamp + message count (both dim).
+  printf '  \033[2m%s  ·  %s messages\033[0m\n' "$ts" "$count"
+  # Line 4: first-snippet preview (light).
+  if [ -n "$snippet" ]; then
+    printf '  \033[0;37m%s\033[0m\n' "$snippet"
+  fi
+  # Separator.
+  printf '\033[2m────────────────────────────────────────\033[0m\n'
+}
+
+# Print a styled preview: colored header block followed by up to 30 user-
+# authored text snippets. If $2 (query) is non-empty, pipe the body through
+# grep --color to highlight matches without filtering — uses the "|$" trick
+# so every line passes grep but only matches are colored.
 ccsesh_ui_preview() {
   local f="$1"
   local q="${2:-}"
   [ -r "$f" ] || { printf '(session file not readable)\n'; return 0; }
+
+  _ccsesh_ui_preview_header_print "$f"
+
   if [ -n "$q" ]; then
     # Escape regex metacharacters in the query so users searching for "2+2" etc
     # don't accidentally treat their query as a regex.
@@ -48,26 +126,32 @@ ccsesh_ui_preview() {
   fi
 }
 
-# Build the fzf input. Consumes the raw 8-field stream from
+# Build the fzf input. Consumes the raw 9-field stream from
 # _ccsesh_sessions_list_raw (epoch, sid, cwd, ts_iso, count, ver, summary,
-# extended) and emits 5 tab-delimited fzf fields:
-#   1 = sid    (hidden)
-#   2 = cwd    (hidden)
-#   3 = ts_iso (hidden)
+# extended, custom_title) and emits 6 tab-delimited fzf fields:
+#   1 = sid         (hidden)
+#   2 = cwd         (hidden)
+#   3 = ts_iso      (hidden)
 #   4 = colored display + dimmed extended text (visible via --with-nth=4)
-#   5 = epoch  (hidden, carried for since: filtering in __fzf_feed)
+#   5 = epoch       (hidden, carried for since: filtering in __fzf_feed)
+#   6 = custom_title (hidden, carried for name: filtering in __fzf_feed)
 #
-# Fields 1,2,3,5 are not searched by fzf (--with-nth=4 scopes both display
-# and search to field 4), but they are present in the selection output so
-# bash can read sid/cwd on Enter and __fzf_feed can filter on epoch.
+# If the session has a custom title, it is rendered as a bold-green `[title]`
+# badge prefixed onto the display field. It stays searchable via free-text
+# queries AND can be filtered exactly via `name:X`.
 _ccsesh_ui_build_lines() {
-  local epoch sid cwd ts_iso count ver summary extended date_short proj_base
-  while IFS=$'\t' read -r epoch sid cwd ts_iso count ver summary extended; do
+  local epoch sid cwd ts_iso count ver summary extended title date_short proj_base badge
+  while IFS=$'\t' read -r epoch sid cwd ts_iso count ver summary extended title; do
     date_short="${ts_iso%%T*}"
     proj_base="$(basename "$cwd" 2>/dev/null)"
     [ -n "$proj_base" ] || proj_base="(unknown)"
-    printf '%s\t%s\t%s\t\033[2m%s\033[0m  \033[36m%s\033[0m  %s  \033[2;90m%s\033[0m\t%s\n' \
-      "$sid" "$cwd" "$ts_iso" "$date_short" "$proj_base" "$summary" "$extended" "$epoch"
+    if [ -n "$title" ]; then
+      badge="$(printf '\033[1;32m[%s]\033[0m  ' "$title")"
+    else
+      badge=""
+    fi
+    printf '%s\t%s\t%s\t%b\033[2m%s\033[0m  \033[36m%s\033[0m  %s  \033[2;90m%s\033[0m\t%s\t%s\n' \
+      "$sid" "$cwd" "$ts_iso" "$badge" "$date_short" "$proj_base" "$summary" "$extended" "$epoch" "$title"
   done
 }
 

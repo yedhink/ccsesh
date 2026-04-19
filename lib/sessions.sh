@@ -28,12 +28,13 @@ def user_text:
 | ([$R[] | select(.sessionId != null) | .sessionId] | first // "") as $sid
 | ([$R[] | select(.cwd != null) | .cwd] | first // "") as $cwd
 | ([$R[] | select(.version != null) | .version] | first // "") as $ver
+| ([$R[] | select(.type == "custom-title") | .customTitle // empty] | first // "") as $title
 | ([$R[] | .timestamp // empty] | max // "") as $raw_ts
 | (if $raw_ts != "" then ($raw_ts | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) else 0 end) as $epoch
 | ($epoch | if . > 0 then strflocaltime("%Y-%m-%dT%H:%M:%S%z") else "" end) as $ts_iso
 | ([$R[] | select((.type == "user" or .type == "assistant") and ((.isMeta // false) | not))] | length) as $count
 | ([$R[] | select(.type == "user" and ((.isMeta // false) | not)) | (.message.content | user_text) | select(. != "")]) as $texts
-| [($epoch | tostring), $sid, $cwd, $ts_iso, ($count | tostring), $ver, ($texts[0] // ""), ($texts | join(" ") | .[0:500])]
+| [($epoch | tostring), $sid, $cwd, $ts_iso, ($count | tostring), $ver, ($texts[0] // ""), ($texts | join(" ") | .[0:500]), $title]
 | @tsv
 '
 export _CCSESH_ROW_JQ

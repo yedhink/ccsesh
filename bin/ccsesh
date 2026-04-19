@@ -59,7 +59,7 @@ ccsesh_main() {
         local _tok
         for _tok in $_q; do
           case "$_tok" in
-            repo:*|since:*) ;;
+            repo:*|since:*|name:*) ;;
             *) _q_clean="${_q_clean:+$_q_clean }$_tok" ;;
           esac
         done
@@ -85,12 +85,13 @@ ccsesh_main() {
           # No cache — either ccsesh_ui_run did not run, or it failed. Silent.
           exit 0
         fi
-        local _repo="" _since="" _text=""
+        local _repo="" _since="" _name="" _text=""
         local _tok
         for _tok in $_q; do
           case "$_tok" in
             repo:*)  _repo="${_tok#repo:}" ;;
             since:*) _since="${_tok#since:}" ;;
+            name:*)  _name="${_tok#name:}" ;;
             *)       _text="${_text:+$_text }$_tok" ;;
           esac
         done
@@ -102,13 +103,14 @@ ccsesh_main() {
           [ -n "$_sec" ] && _cutoff="$(( $(date +%s) - _sec ))"
         fi
 
-        # Apply repo + since filters via awk on the cache.
-        # Cache fields: 1=sid 2=cwd 3=ts_iso 4=display 5=epoch.
+        # Apply repo + since + name filters via awk on the cache.
+        # Cache fields: 1=sid 2=cwd 3=ts_iso 4=display 5=epoch 6=custom_title.
         local _filtered
         _filtered="$(awk -F'\t' -v OFS='\t' \
-             -v repo="$_repo" -v cutoff="${_cutoff:-}" '
+             -v repo="$_repo" -v cutoff="${_cutoff:-}" -v name="$_name" '
           BEGIN {
             if (repo != "") repo_lc = tolower(repo)
+            if (name != "") name_lc = tolower(name)
           }
           {
             if (repo != "") {
@@ -116,6 +118,10 @@ ccsesh_main() {
               if (index(base, repo_lc) == 0) next
             }
             if (cutoff != "" && ($5+0) < (cutoff+0)) next
+            if (name != "") {
+              title_lc = tolower($6)
+              if (index(title_lc, name_lc) == 0) next
+            }
             print
           }
         ' "$cache")"
