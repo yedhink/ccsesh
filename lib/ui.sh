@@ -5,8 +5,10 @@ _UI_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$_UI_DIR/util.sh"
 
-# Internal render helper for ccsesh_ui_preview.
-_ccsesh_ui_preview_render() {
+# Internal: emit ALL user-authored preview lines (no head cap). Used by
+# ccsesh_ui_preview which slices the output based on whether a query is
+# present. Every line is prefixed with "> ".
+_ccsesh_ui_preview_render_raw() {
   local f="$1"
   jq -Rr '
     fromjson?
@@ -21,9 +23,13 @@ _ccsesh_ui_preview_render() {
             | .text ] | .[] )
       else empty end
   ' < "$f" 2>/dev/null \
-    | head -n 30 \
     | ccsesh_strip_controls \
     | sed 's/^/> /'
+}
+
+# Internal: first 30 preview lines (used when no query is active).
+_ccsesh_ui_preview_render() {
+  _ccsesh_ui_preview_render_raw "$1" | head -n 30
 }
 
 # Extract header metadata for the preview pane in one jq pass. Emits 6 fields
@@ -103,10 +109,12 @@ _ccsesh_ui_preview_header_print() {
   printf '\033[2m────────────────────────────────────────\033[0m\n'
 }
 
-# Print a styled preview: colored header block followed by up to 30 user-
-# authored text snippets. If $2 (query) is non-empty, pipe the body through
-# grep --color to highlight matches without filtering — uses the "|$" trick
-# so every line passes grep but only matches are colored.
+# Print a styled preview: colored header block followed by 30 user-authored
+# text snippets. When $2 (query) is non-empty, the body is scrolled so the
+# first matching line is at the top instead of the start of the transcript
+# (the header already carries the truncated-start snippet). If no match is
+# found, falls back to the first 30 lines. Matches are highlighted via grep
+# --color using the "|$" trick so every line passes but only matches color.
 ccsesh_ui_preview() {
   local f="$1"
   local q="${2:-}"
@@ -114,16 +122,32 @@ ccsesh_ui_preview() {
 
   _ccsesh_ui_preview_header_print "$f"
 
-  if [ -n "$q" ]; then
-    # Escape regex metacharacters in the query so users searching for "2+2" etc
-    # don't accidentally treat their query as a regex.
-    local q_esc
-    q_esc="$(printf '%s' "$q" | sed -E 's/[][(){}.+*?^$|\\\/]/\\&/g')"
-    _ccsesh_ui_preview_render "$f" | grep --color=always -iE "${q_esc}|$" 2>/dev/null \
-      || _ccsesh_ui_preview_render "$f"
-  else
+  if [ -z "$q" ]; then
     _ccsesh_ui_preview_render "$f"
+    return 0
   fi
+
+  # Escape regex metacharacters in the query so users searching for e.g.
+  # "2+2" don't get it interpreted as a regex.
+  local q_esc
+  q_esc="$(printf '%s' "$q" | sed -E 's/[][(){}.+*?^$|\\\/]/\\&/g')"
+
+  local body
+  body="$(_ccsesh_ui_preview_render_raw "$f")"
+  [ -n "$body" ] || return 0
+
+  # Find line number of first match (case-insensitive). If none, anchor at
+  # line 1 so we still show the first 30 lines.
+  local first_line
+  first_line="$(printf '%s\n' "$body" | grep -n -i -m 1 -E -- "$q_esc" 2>/dev/null \
+                | head -n 1 | cut -d: -f1)"
+  [ -n "$first_line" ] || first_line=1
+
+  printf '%s\n' "$body" \
+    | tail -n "+$first_line" \
+    | head -n 30 \
+    | grep --color=always -iE -- "${q_esc}|$" 2>/dev/null \
+    || printf '%s\n' "$body" | tail -n "+$first_line" | head -n 30
 }
 
 # Build the fzf input. Consumes the raw 9-field stream from
