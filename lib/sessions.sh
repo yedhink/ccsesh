@@ -5,6 +5,39 @@ _SESSIONS_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$_SESSIONS_DIR/util.sh"
 
+# Single-jq query that extracts one session's metadata in one pass.
+# Keeps sanitization OUT (bash 3.2 awk post-pass does it); unicode-range
+# gsub inside jq is O(n^2) and was responsible for ~8s of overhead.
+# Date conversion stays INSIDE jq via fromdateiso8601 + strflocaltime —
+# avoids 222 bash `date` subprocess spawns.
+# Output: epoch \t sid \t cwd \t ts_iso_local \t count \t ver \t raw_summary \t raw_extended
+_CCSESH_ROW_JQ='
+def user_text:
+  . as $c
+  | if ($c | type) == "string" then
+      (if ($c | test("^<(command-|local-command-|system-reminder)")) then "" else $c end)
+    elif ($c | type) == "array" then
+      ([ $c[]
+        | select(.type == "text" and (.text // "") != "")
+        | select(.text | test("^<(command-|local-command-|system-reminder)") | not)
+        | .text
+      ][0] // "")
+    else "" end;
+
+(split("\n") | map(fromjson?) | map(select(. != null))) as $R
+| ([$R[] | select(.sessionId != null) | .sessionId] | first // "") as $sid
+| ([$R[] | select(.cwd != null) | .cwd] | first // "") as $cwd
+| ([$R[] | select(.version != null) | .version] | first // "") as $ver
+| ([$R[] | .timestamp // empty] | max // "") as $raw_ts
+| (if $raw_ts != "" then ($raw_ts | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) else 0 end) as $epoch
+| ($epoch | if . > 0 then strflocaltime("%Y-%m-%dT%H:%M:%S%z") else "" end) as $ts_iso
+| ([$R[] | select((.type == "user" or .type == "assistant") and ((.isMeta // false) | not))] | length) as $count
+| ([$R[] | select(.type == "user" and ((.isMeta // false) | not)) | (.message.content | user_text) | select(. != "")]) as $texts
+| [($epoch | tostring), $sid, $cwd, $ts_iso, ($count | tostring), $ver, ($texts[0] // ""), ($texts | join(" ") | .[0:500])]
+| @tsv
+'
+export _CCSESH_ROW_JQ
+
 # Resolve the Claude home dir. Callers may override with $CCSESH_CLAUDE_HOME.
 ccsesh_home() {
   printf '%s\n' "${CCSESH_CLAUDE_HOME:-$HOME/.claude}"
@@ -206,42 +239,53 @@ _ccsesh_sessions_list_raw() {
   _ccsesh_history_map > "$hist_map"
   _ccsesh_debug "list: history map has $(grep -c '' "$hist_map") entries"
 
-  local f raw sid cwd raw_ts count ver summary extended epoch hist_display ts_final
-  local emitted=0
-  _ccsesh_debug "list: starting per-session loop"
-  while IFS= read -r f; do
-    raw="$(_ccsesh_row_extract "$f")" || continue
-    IFS=$'\t' read -r sid cwd raw_ts count ver summary extended <<<"$raw"
-    [ -n "$sid" ] || continue
+  # Parallelism cap. Default 8; override via CCSESH_JQ_PARALLEL.
+  local par="${CCSESH_JQ_PARALLEL:-8}"
 
-    if [ -n "$project" ] && [ "$cwd" != "$project" ]; then continue; fi
+  _ccsesh_debug "list: running parallel jq (P=$par) + awk join"
 
-    epoch=""
-    if [ -n "$raw_ts" ]; then epoch="$(ccsesh_iso_to_epoch "$raw_ts")"; fi
-    if [ -z "$epoch" ]; then epoch="$(ccsesh_stat_mtime "$f" 2>/dev/null)" || epoch=""; fi
-    [ -n "$epoch" ] || continue
-
-    if [ -n "$cutoff" ] && [ "$epoch" -lt "$cutoff" ]; then continue; fi
-
-    # History display override.
-    hist_display="$(awk -F'\t' -v sid="$sid" '$1==sid { print $2; exit }' "$hist_map")"
-    [ -n "$hist_display" ] && summary="$hist_display"
-    [ -n "$summary" ] || summary="<no prompt yet>"
-
-    # Sanitize.
-    summary="$(printf '%s' "$summary" | ccsesh_strip_controls | ccsesh_flatten | ccsesh_truncate 80)"
-    extended="$(printf '%s' "$extended" | ccsesh_strip_controls | ccsesh_flatten | ccsesh_truncate 500)"
-
-    ts_final="$(_ccsesh_epoch_to_iso_offset "$epoch")"
-
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$epoch" "$sid" "$cwd" "$ts_final" "$count" "$ver" "$summary" "$extended"
-    emitted=$((emitted+1))
-  done < <(ccsesh_sessions_discover) \
+  # Pipeline:
+  #   1. discover candidate .jsonl files
+  #   2. xargs -P <par> -n 1: spawn <par> jq workers, one file each.
+  #      jq emits 8-field unsanitized TSV (date already formatted).
+  #   3. single awk pass: history-map join, --project / --since filter,
+  #      sanitize (strip C0+DEL, collapse tab/newline, squeeze spaces),
+  #      truncate summary to 80 chars and extended to 500.
+  #   4. sort by epoch desc.
+  ccsesh_sessions_discover \
+    | xargs -n 1 -P "$par" -I{} jq -Rsr "$_CCSESH_ROW_JQ" {} 2>/dev/null \
+    | awk -F'\t' -v OFS='\t' \
+          -v hist="$hist_map" \
+          -v project="$project" \
+          -v cutoff="${cutoff:-}" '
+      BEGIN {
+        while ((getline line < hist) > 0) {
+          idx = index(line, "\t")
+          if (idx > 0) H[substr(line, 1, idx-1)] = substr(line, idx+1)
+        }
+        close(hist)
+      }
+      # $1=epoch $2=sid $3=cwd $4=ts_iso $5=count $6=ver $7=summary $8=extended
+      {
+        if ($2 == "") next
+        if (project != "" && $3 != project) next
+        if (cutoff != "" && ($1+0) < (cutoff+0)) next
+        if ($2 in H) $7 = H[$2]
+        if ($7 == "") $7 = "<no prompt yet>"
+        for (i = 7; i <= 8; i++) {
+          gsub(/[\001-\010\013\014\016-\037\177]/, "", $i)
+          gsub(/[\t\n]/, " ", $i)
+          gsub(/  +/, " ", $i)
+        }
+        if (length($7) > 80) $7 = substr($7, 1, 80)
+        if (length($8) > 500) $8 = substr($8, 1, 500)
+        print
+      }
+    ' \
     | sort -t $'\t' -k1,1rn
 
   rm -f "$hist_map"
-  _ccsesh_debug "list: done, emitted=$emitted"
+  _ccsesh_debug "list: done"
 }
 
 # Public: human-facing 6-field TSV. Same contract as before.
@@ -249,53 +293,6 @@ ccsesh_sessions_list() {
   local _rc=0
   (set -o pipefail; _ccsesh_sessions_list_raw "$@" | cut -f 2-7) || _rc=$?
   return $_rc
-}
-
-# Internal: extract all per-session fields in ONE jq pass.
-# Prints: raw_sid \t raw_cwd \t raw_iso_ts \t raw_count \t raw_version \t raw_summary \t raw_extended
-# Fields are NOT sanitized — caller must strip controls/flatten/truncate before use.
-# Returns non-zero if the file can't be read or yields no sessionId.
-_ccsesh_row_extract() {
-  local f="$1"
-  [ -r "$f" ] || return 1
-  local out
-  out="$(jq -Rsr '
-    def user_text:
-      . as $c
-      | if ($c | type) == "string" then
-          (if ($c | test("^<(command-|local-command-|system-reminder)")) then "" else $c end)
-        elif ($c | type) == "array" then
-          ([ $c[]
-            | select(.type == "text" and (.text // "") != "")
-            | select(.text | test("^<(command-|local-command-|system-reminder)") | not)
-            | .text
-          ][0] // "")
-        else "" end;
-
-    (split("\n") | map(fromjson?) | map(select(. != null))) as $R
-    | ([$R[] | select(.sessionId != null) | .sessionId] | first // "") as $sid
-    | ([$R[] | select(.cwd != null) | .cwd] | first // "") as $cwd
-    | ([$R[] | select(.version != null) | .version] | first // "") as $ver
-    | ([ $R[]
-       | select(.type == "user" and ((.isMeta // false) | not))
-       | (.message.content | user_text)
-       | select(. != "")
-       ]) as $texts
-    | [
-        $sid,
-        $cwd,
-        ([$R[] | .timestamp // empty] | max // ""),
-        ([$R[] | select((.type == "user" or .type == "assistant") and ((.isMeta // false) | not))] | length | tostring),
-        $ver,
-        ($texts[0] // ""),
-        ($texts | join(" ") | .[0:500])
-      ]
-    | @tsv
-  ' < "$f" 2>/dev/null)"
-  [ -n "$out" ] || return 1
-  # Guard: must have a non-empty sessionId in field 1.
-  case "$out" in $'\t'*) return 1 ;; esac
-  printf '%s\n' "$out"
 }
 
 # Internal: print sid\tdisplay lines for every unique sessionId in
