@@ -84,14 +84,21 @@ _ccsesh_ui_preview_header_extract() {
     | ([$R[] | .timestamp // empty] | max // "") as $raw_ts
     | (if $raw_ts != "" then ($raw_ts | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601 | strflocaltime("%Y-%m-%d %H:%M %z")) else "" end) as $ts
     | ([$R[] | select((.type == "user" or .type == "assistant") and ((.isMeta // false) | not))] | length) as $count
-    | ([$R[] | select(.type == "user" and ((.isMeta // false) | not)) | (.message.content | user_text) | select(. != "")][0] // "") as $snippet
+    | ([$R[] | select(.type == "user" and ((.isMeta // false) | not)) | (.message.content | user_text) | select(. != "")][0] // "") as $raw_snippet
+    | ($raw_snippet
+       | one_line
+       | . as $s
+       | [match("[.!?](\\s|$)"; "g")] as $ms
+       | (if ($ms | length) >= 2 then $s[0:($ms[1].offset + 1)] else $s end)
+       | .[0:240]
+      ) as $snippet
     | [
         ($sid | one_line),
         ($cwd | one_line),
         ($title | one_line),
         ($ts | one_line),
         ($count | tostring),
-        ($snippet | one_line | .[0:240])
+        $snippet
       ]
     | .[]
   ' < "$f" 2>/dev/null
@@ -105,7 +112,10 @@ _ccsesh_ui_preview_header_extract() {
 #   Repo  — project basename (cyan)
 #   Path  — full cwd (dim)
 #   Last  — max event timestamp + message count (dim)
-#   Open  — truncated first user-authored message (light)
+#
+# Below the labeled rows, a "Session started with:" heading is printed
+# followed by the first ~2 sentences of the session's opening user message
+# on an indented line (capped at 240 chars for runaway single sentences).
 _ccsesh_ui_preview_header_print() {
   local f="$1"
   local sid cwd title ts count snippet proj_base
@@ -145,7 +155,10 @@ _ccsesh_ui_preview_header_print() {
   _hdr_row 'Repo:' "${repo}${proj_base}${rs}"
   _hdr_row 'Path:' "${dim}${cwd}${rs}"
   _hdr_row 'Last:' "${dim}${ts}  ·  ${count} messages${rs}"
-  [ -n "$snippet" ] && _hdr_row 'Open:' "${light}${snippet}${rs}"
+  if [ -n "$snippet" ]; then
+    printf '%sSession started with:%s\n' "$lbl" "$rs"
+    printf '  %s%s%s\n' "$light" "$snippet" "$rs"
+  fi
   printf '%s────────────────────────────────────────%s\n' "$dim" "$rs"
   unset -f _hdr_row
 }
