@@ -104,3 +104,29 @@ ccsesh_session_summary() {
     | ccsesh_truncate 80
   printf '\n'
 }
+
+# Print max event .timestamp (as epoch seconds) across a session file.
+# Uses the last 200 lines which is more than enough to find the max assuming
+# timestamps are monotonically non-decreasing. Falls back to file mtime.
+ccsesh_session_recency() {
+  local f="$1"
+  local iso
+  iso="$(tail -n 200 "$f" 2>/dev/null | jq -Rr 'fromjson? | .timestamp // empty' 2>/dev/null | sort | tail -n 1)"
+  if [ -n "$iso" ]; then
+    local epoch
+    epoch="$(ccsesh_iso_to_epoch "$iso")"
+    if [ -n "$epoch" ]; then printf '%s\n' "$epoch"; return 0; fi
+  fi
+  ccsesh_stat_mtime "$f"
+}
+
+# Print count of records where .type is "user" or "assistant" and
+# .isMeta is not true.
+ccsesh_session_count() {
+  local f="$1"
+  jq -Rr '
+    fromjson?
+    | select((.type == "user" or .type == "assistant") and ((.isMeta // false) | not))
+    | 1
+  ' < "$f" 2>/dev/null | wc -l | tr -d ' '
+}
