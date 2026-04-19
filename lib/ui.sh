@@ -432,6 +432,9 @@ operators: foo bar (AND)  ^foo (prefix)  foo$ (suffix)  !foo (negate)  '\''foo (
         return 1
       fi
       command -v claude >/dev/null 2>&1 || { echo "ccsesh: claude not on PATH" >&2; return 127; }
+      # Default Enter action: cd into the session's cwd and resume claude.
+      # A user-configured custom command (see _ccsesh_ui_enter_expand) will
+      # pre-empt this path when present.
       cd -- "$cwd" && exec claude --resume "$sid"
       ;;
   esac
