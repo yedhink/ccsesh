@@ -181,6 +181,31 @@ assert_eq "$ver_got" "2.1.83" "row A version"
 assert_eq "$sum_got" "Reverse a linked list in Rust please" "row A summary"
 assert_match "$(printf '%s' "$row" | cut -f3)" '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{4}$' "row A timestamp iso 8601 with offset"
 
+echo "== sessions.sh list =="
+
+# Default: all 3 rows, sorted by recency desc (A, B, C by our fixture mtimes/timestamps).
+rows="$(ccsesh_sessions_list)"
+line_count="$(printf '%s' "$rows" | grep -c '')"
+assert_eq "$line_count" "3" "list default: 3 rows"
+first_sid="$(printf '%s' "$rows" | head -n 1 | cut -f1)"
+assert_eq "$first_sid" "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa" "list default: newest first = A"
+last_sid="$(printf '%s' "$rows" | tail -n 1 | cut -f1)"
+assert_eq "$last_sid" "cccccccc-cccc-4ccc-cccc-cccccccccccc" "list default: oldest last = C"
+
+# --project filter
+rows="$(ccsesh_sessions_list --project /Users/ikigai/dev/neeto-products)"
+line_count="$(printf '%s' "$rows" | grep -c '')"
+assert_eq "$line_count" "2" "list --project filters to matching cwd"
+
+# --since 2d (from 2026-04-18 00:00 UTC). Session C has ts 2026-04-17 which is within 2d, so all 3.
+# --since 1h (relative to now) - on a real run, probably 0. Just ensure command runs.
+rows="$(ccsesh_sessions_list --since 1h 2>/dev/null || true)"
+# No assertion on count here — wall-clock dependent.
+
+# Invalid --since
+rc=0; ccsesh_sessions_list --since bogus >/dev/null 2>&1 || rc=$?
+assert_eq "$rc" "2" "list --since bogus exits 2"
+
 echo
 echo "passed: $_passed  failed: $_failed"
 [ "$_failed" -eq 0 ]
