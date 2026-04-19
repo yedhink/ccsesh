@@ -31,7 +31,12 @@ ccsesh --version
 
 Keybindings inside the picker:
 - `Enter` — `cd` into the session's original project dir and run `claude --resume <id>`.
-- `Ctrl-O` — print `<sessionId><TAB><cwd>` and exit (for scripting).
+- `Ctrl-O` — print a two-line summary of the selected session and exit:
+  ```
+  <sessionId>, <repo-name>[, <custom-title>]
+  cd -- <cwd> && claude --resume <sessionId>
+  ```
+  Useful for scripting or for quickly grabbing a ready-to-paste resume command.
 - `Esc` — quit.
 
 ## Search syntax

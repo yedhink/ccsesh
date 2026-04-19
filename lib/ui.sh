@@ -254,16 +254,27 @@ operators: foo bar (AND)  ^foo (prefix)  foo$ (suffix)  !foo (negate)  '\''foo (
   [ "$rc" -eq 130 ] && return 0
   [ "$rc" -ne 0 ] && return "$rc"
 
-  local key line sid cwd
+  local key line sid cwd title proj_base
   key="$(printf '%s\n' "$selection" | head -n 1)"
   line="$(printf '%s\n' "$selection" | sed -n '2p')"
   [ -n "$line" ] || return 0
   sid="$(printf '%s' "$line" | cut -f1)"
   cwd="$(printf '%s' "$line" | cut -f2)"
+  # Field 6 in our fzf input is the raw custom_title (see _ccsesh_ui_build_lines).
+  title="$(printf '%s' "$line" | cut -f6)"
 
   case "$key" in
     ctrl-o)
-      printf '%s\t%s\n' "$sid" "$cwd"
+      proj_base="$(basename "$cwd" 2>/dev/null)"
+      [ -n "$proj_base" ] || proj_base="(unknown)"
+      # Header: comma-separated sid, repo name, and optional custom title.
+      if [ -n "$title" ]; then
+        printf '%s, %s, %s\n' "$sid" "$proj_base" "$title"
+      else
+        printf '%s, %s\n' "$sid" "$proj_base"
+      fi
+      # Resume command. `claude --resume` is cwd-scoped, so we emit the cd too.
+      printf 'cd -- %q && claude --resume %s\n' "$cwd" "$sid"
       return 0 ;;
     *)
       if [ ! -d "$cwd" ]; then
