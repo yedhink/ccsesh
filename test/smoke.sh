@@ -162,6 +162,25 @@ assert_eq "$got" "2" "count A = 1 user (non-meta) + 1 assistant"
 got="$(ccsesh_session_count "$expected_b")"
 assert_eq "$got" "2" "count B = 1 user (array, non-meta) + 1 assistant, truncated line skipped"
 
+echo "== sessions.sh row =="
+
+got="$(ccsesh_session_version "$expected_a")"
+assert_eq "$got" "2.1.83" "version A"
+
+row="$(ccsesh_session_row "$expected_a")"
+# Expected fields: sid, cwd, ts_iso, count, version, summary
+sid_got="$(printf '%s' "$row" | cut -f1)"
+cwd_got="$(printf '%s' "$row" | cut -f2)"
+count_got="$(printf '%s' "$row" | cut -f4)"
+ver_got="$(printf '%s' "$row" | cut -f5)"
+sum_got="$(printf '%s' "$row" | cut -f6)"
+assert_eq "$sid_got" "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa" "row A sid"
+assert_eq "$cwd_got" "/Users/ikigai/dev/neeto-products" "row A cwd"
+assert_eq "$count_got" "2" "row A count"
+assert_eq "$ver_got" "2.1.83" "row A version"
+assert_eq "$sum_got" "Reverse a linked list in Rust please" "row A summary"
+assert_match "$(printf '%s' "$row" | cut -f3)" '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{4}$' "row A timestamp iso 8601 with offset"
+
 echo
 echo "passed: $_passed  failed: $_failed"
 [ "$_failed" -eq 0 ]
