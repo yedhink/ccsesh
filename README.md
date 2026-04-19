@@ -12,15 +12,12 @@ You jump between projects all day. Claude Code keeps per-project session history
 
 ## Install
 
-Two paths, pick whichever suits you:
+### Prompt for an AI agent to install on your behalf
 
-- **Let an AI agent do it** *(recommended)* — paste a prompt into your coding assistant and it clones, installs dependencies, sets up PATH, and walks you through the optional Enter-action config interactively. Expand the first section below for the prompt.
-- **Install manually** — three commands if you already know what you want. Expand the second section below.
+The fastest path: paste the block below into your coding assistant (Claude Code, Cursor, Windsurf, Codex, Aider, etc.) and let it handle everything — clone, dependencies, PATH setup, and an optional interactive step where it configures the Enter action for your terminal (new WezTerm / Ghostty tab, new tmux window, your own script, or leave as the default).
 
 <details>
-<summary><b>Prompt for an AI agent to install on your behalf</b></summary>
-
-Paste the block below into your coding assistant (Claude Code, Cursor, Windsurf, Codex, Aider, etc.) and let it handle everything — clone, dependencies, PATH setup, and an optional interactive step where it configures the Enter action for your terminal (new WezTerm / Ghostty tab, new tmux window, your own script, or leave as the default).
+<summary><b>Show the prompt</b></summary>
 
 ````text
 Install ccsesh, a CLI that fuzzy-searches and resumes Claude Code sessions
