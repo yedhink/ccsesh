@@ -267,25 +267,91 @@ operators: foo bar (AND)  ^foo (prefix)  foo$ (suffix)  !foo (negate)  '\''foo (
     ctrl-o)
       proj_base="$(basename "$cwd" 2>/dev/null)"
       [ -n "$proj_base" ] || proj_base="(unknown)"
+      local cwd_q
+      cwd_q="$(printf '%q' "$cwd")"
+
+      # Build plain content lines (no ANSI) so width math is honest.
+      # Two-column fields get a fixed 12-char label column for alignment.
+      local -a _lines
+      _lines=(
+        "  Session ID:  $sid"
+        "  Repo:        $proj_base"
+      )
+      if [ -n "$title" ]; then
+        _lines+=("  Name:        $title")
+      fi
+      _lines+=("  Path:        $cwd")
+      _lines+=("")
+      _lines+=("  Resume (cwd-scoped):")
+      _lines+=("    cd -- $cwd_q && claude --resume $sid")
+
+      # Measure widest line.
+      local _max=0 _n _l
+      for _l in "${_lines[@]}"; do
+        _n=${#_l}
+        [ "$_n" -gt "$_max" ] && _max=$_n
+      done
+      # Inner width gets a bit of right padding before the closing border.
+      local _inner=$((_max + 2))
+
+      # Top border: ╭─ Session ─────╮   Bottom: ╰──────────────╯
+      local _title_seg="─ Session "
+      local _top_dashes_n=$((_inner - ${#_title_seg}))
+      [ "$_top_dashes_n" -lt 0 ] && _top_dashes_n=0
+      local _top_dashes="" _bot_dashes="" _i
+      for (( _i=0; _i<_top_dashes_n; _i++ )); do _top_dashes+="─"; done
+      for (( _i=0; _i<_inner; _i++ )); do _bot_dashes+="─"; done
+
+      # Colors (ANSI only when stdout is a TTY).
       local c_border='' c_label='' c_title='' c_cmd='' c_reset=''
       if [ -t 1 ]; then
-        c_border=$'\033[36m'   # cyan box rule
-        c_label=$'\033[1m'     # bold labels
-        c_title=$'\033[1;32m'  # green for the custom title (matches list badge)
-        c_cmd=$'\033[2m'       # dim for the resume command (copy-paste material)
+        c_border=$'\033[36m'
+        c_label=$'\033[1m'
+        c_title=$'\033[1;32m'
+        c_cmd=$'\033[2m'
         c_reset=$'\033[0m'
       fi
-      printf '%s╭─ Session ─────────────────────────────%s\n' "$c_border" "$c_reset"
-      printf '%s│%s  %sSession ID:%s  %s\n' "$c_border" "$c_reset" "$c_label" "$c_reset" "$sid"
-      printf '%s│%s  %sRepo:%s        %s\n' "$c_border" "$c_reset" "$c_label" "$c_reset" "$proj_base"
+
+      # Render one padded, right-bordered line. $1 = plain content (for width);
+      # $2 = colored content (what we actually print). The two should render
+      # with the same visible width.
+      _print_line() {
+        local plain="$1" colored="$2"
+        local pad=$((_inner - ${#plain}))
+        [ "$pad" -lt 0 ] && pad=0
+        local spaces=""
+        [ "$pad" -gt 0 ] && spaces="$(printf '%*s' "$pad" '')"
+        printf '%s│%s%s%s%s│%s\n' "$c_border" "$c_reset" "$colored" "$spaces" "$c_border" "$c_reset"
+      }
+
+      # Top + bottom rules.
+      printf '%s╭%s%s╮%s\n' "$c_border" "$_title_seg" "$_top_dashes" "$c_reset"
+
+      # Content.
+      _print_line \
+        "  Session ID:  $sid" \
+        "  $c_label""Session ID:$c_reset  $sid"
+      _print_line \
+        "  Repo:        $proj_base" \
+        "  $c_label""Repo:$c_reset        $proj_base"
       if [ -n "$title" ]; then
-        printf '%s│%s  %sName:%s        %s%s%s\n' "$c_border" "$c_reset" "$c_label" "$c_reset" "$c_title" "$title" "$c_reset"
+        _print_line \
+          "  Name:        $title" \
+          "  $c_label""Name:$c_reset        $c_title$title$c_reset"
       fi
-      printf '%s│%s  %sPath:%s        %s\n' "$c_border" "$c_reset" "$c_label" "$c_reset" "$cwd"
-      printf '%s│%s\n' "$c_border" "$c_reset"
-      printf '%s│%s  %sResume (cwd-scoped):%s\n' "$c_border" "$c_reset" "$c_label" "$c_reset"
-      printf '%s│%s    %scd -- %q && claude --resume %s%s\n' "$c_border" "$c_reset" "$c_cmd" "$cwd" "$sid" "$c_reset"
-      printf '%s╰────────────────────────────────────────%s\n' "$c_border" "$c_reset"
+      _print_line \
+        "  Path:        $cwd" \
+        "  $c_label""Path:$c_reset        $cwd"
+      _print_line "" ""
+      _print_line \
+        "  Resume (cwd-scoped):" \
+        "  $c_label""Resume (cwd-scoped):$c_reset"
+      _print_line \
+        "    cd -- $cwd_q && claude --resume $sid" \
+        "    $c_cmd""cd -- $cwd_q && claude --resume $sid$c_reset"
+
+      printf '%s╰%s╯%s\n' "$c_border" "$_bot_dashes" "$c_reset"
+      unset -f _print_line
       return 0 ;;
     *)
       if [ ! -d "$cwd" ]; then
