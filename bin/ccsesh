@@ -51,16 +51,92 @@ ccsesh_main() {
     case "$1" in
       __preview)
         # Hidden: called by fzf preview. Args: __preview <cwd> <sid> [<query>]
+        # Query may contain filter tokens (repo:X, since:Y) that should NOT
+        # be highlighted in the preview — strip them first.
         shift
         local _cwd="$1" _sid="$2" _q="${3:-}"
+        local _q_clean=""
+        local _tok
+        for _tok in $_q; do
+          case "$_tok" in
+            repo:*|since:*) ;;
+            *) _q_clean="${_q_clean:+$_q_clean }$_tok" ;;
+          esac
+        done
         local home; home="$(ccsesh_home)"
         local f
         for f in "$home/projects"/*/"$_sid".jsonl; do
           [ -f "$f" ] || continue
-          ccsesh_ui_preview "$f" "$_q"
+          ccsesh_ui_preview "$f" "$_q_clean"
           exit 0
         done
         printf '(session file not found)\n'
+        exit 0
+        ;;
+      __fzf_feed)
+        # Hidden: called by fzf's change:reload bind. Args: __fzf_feed [<query>]
+        # Reads from $CCSESH_UI_CACHE (set by ccsesh_ui_run), parses the query
+        # for filter tokens (repo:X, since:Nd|Nh|Nm), applies them plus any
+        # remaining text terms, and prints the filtered TSV.
+        shift
+        local _q="${*:-}"
+        local cache="${CCSESH_UI_CACHE:-}"
+        if [ -z "$cache" ] || [ ! -r "$cache" ]; then
+          # No cache — either ccsesh_ui_run did not run, or it failed. Silent.
+          exit 0
+        fi
+        local _repo="" _since="" _text=""
+        local _tok
+        for _tok in $_q; do
+          case "$_tok" in
+            repo:*)  _repo="${_tok#repo:}" ;;
+            since:*) _since="${_tok#since:}" ;;
+            *)       _text="${_text:+$_text }$_tok" ;;
+          esac
+        done
+
+        local _cutoff=""
+        if [ -n "$_since" ]; then
+          local _sec
+          _sec="$(_ccsesh_since_to_seconds "$_since" 2>/dev/null)" || _sec=""
+          [ -n "$_sec" ] && _cutoff="$(( $(date +%s) - _sec ))"
+        fi
+
+        # Apply repo + since filters via awk on the cache.
+        # Cache fields: 1=sid 2=cwd 3=ts_iso 4=display 5=epoch.
+        local _filtered
+        _filtered="$(awk -F'\t' -v OFS='\t' \
+             -v repo="$_repo" -v cutoff="${_cutoff:-}" '
+          BEGIN {
+            if (repo != "") repo_lc = tolower(repo)
+          }
+          {
+            if (repo != "") {
+              n = split($2, p, "/"); base = tolower(p[n])
+              if (index(base, repo_lc) == 0) next
+            }
+            if (cutoff != "" && ($5+0) < (cutoff+0)) next
+            print
+          }
+        ' "$cache")"
+
+        if [ -z "$_filtered" ]; then
+          exit 0
+        fi
+
+        # Apply text-match via fzf --filter. --tiebreak=index preserves the
+        # recency-desc order from the cache. --with-nth=4 scopes matching to
+        # the visible display field. -i forces case-insensitive.
+        if [ -n "$_text" ]; then
+          printf '%s\n' "$_filtered" \
+            | fzf --filter="$_text" \
+                  -i \
+                  --delimiter=$'\t' \
+                  --with-nth=4 \
+                  --tiebreak=index 2>/dev/null
+        else
+          printf '%s\n' "$_filtered"
+        fi
         exit 0
         ;;
       --list) mode=list; shift ;;

@@ -48,59 +48,72 @@ ccsesh_ui_preview() {
   fi
 }
 
-# Build the fzf input: hidden field = absolute .jsonl path, display fields =
-# pretty date + project basename + summary with ANSI colors.
+# Build the fzf input. Consumes the raw 8-field stream from
+# _ccsesh_sessions_list_raw (epoch, sid, cwd, ts_iso, count, ver, summary,
+# extended) and emits 5 tab-delimited fzf fields:
+#   1 = sid    (hidden)
+#   2 = cwd    (hidden)
+#   3 = ts_iso (hidden)
+#   4 = colored display + dimmed extended text (visible via --with-nth=4)
+#   5 = epoch  (hidden, carried for since: filtering in __fzf_feed)
+#
+# Fields 1,2,3,5 are not searched by fzf (--with-nth=4 scopes both display
+# and search to field 4), but they are present in the selection output so
+# bash can read sid/cwd on Enter and __fzf_feed can filter on epoch.
 _ccsesh_ui_build_lines() {
-  local sid cwd ts_iso count ver summary extended date_short proj_base
-  while IFS=$'\t' read -r sid cwd ts_iso count ver summary extended; do
+  local epoch sid cwd ts_iso count ver summary extended date_short proj_base
+  while IFS=$'\t' read -r epoch sid cwd ts_iso count ver summary extended; do
     date_short="${ts_iso%%T*}"
     proj_base="$(basename "$cwd" 2>/dev/null)"
     [ -n "$proj_base" ] || proj_base="(unknown)"
-    # Fzf fields (tab-delimited):
-    #   1 = sid  (hidden from both display and search via --with-nth=4)
-    #   2 = cwd  (hidden)
-    #   3 = ts_iso (hidden)
-    #   4 = colored display + dimmed extended text, both visible AND searchable.
-    #
-    # Extended text is embedded at the end of field 4 (dimmed via \033[2;90m)
-    # so fzf's --with-nth=4 covers it for search. The dim styling de-emphasizes
-    # it visually; it scrolls off the right with --no-hscroll.
-    printf '%s\t%s\t%s\t\033[2m%s\033[0m  \033[36m%s\033[0m  %s  \033[2;90m%s\033[0m\n' \
-      "$sid" "$cwd" "$ts_iso" "$date_short" "$proj_base" "$summary" "$extended"
+    printf '%s\t%s\t%s\t\033[2m%s\033[0m  \033[36m%s\033[0m  %s  \033[2;90m%s\033[0m\t%s\n' \
+      "$sid" "$cwd" "$ts_iso" "$date_short" "$proj_base" "$summary" "$extended" "$epoch"
   done
 }
 
-# Launch fzf. Expects filter args same as sessions_list.
+# Launch fzf. Expects filter args same as sessions_list. Builds a cache file
+# once at startup; the fzf --bind change:reload pipeline then re-filters the
+# cache in place (no jq rebuild per keystroke) using __fzf_feed.
 ccsesh_ui_run() {
-  local lines
-  lines="$(_ccsesh_sessions_list_raw "$@" | cut -f 2- | _ccsesh_ui_build_lines)"
-  if [ -z "$lines" ]; then
+  local cache
+  cache="$(mktemp -t ccsesh.cache.XXXXXX)"
+  # shellcheck disable=SC2064
+  trap "rm -f '$cache'" EXIT INT TERM
+
+  _ccsesh_debug "ui: building cache at $cache"
+  _ccsesh_sessions_list_raw "$@" | _ccsesh_ui_build_lines > "$cache"
+
+  if [ ! -s "$cache" ]; then
     printf 'ccsesh: no sessions found under %s\n' "$(ccsesh_home)" >&2
     return 0
   fi
-  # fzf fields: 1=sid, 2=cwd, 3=ts_iso (all hidden from search and display),
-  # 4 = colored visible display + dimmed extended text (searchable).
-  # --with-nth=4 scopes BOTH display and search to field 4 — in fzf this is
-  # one knob, not two. We include extended text in field 4 (dimmed) so it is
-  # part of the search corpus while visually de-emphasized.
-  # -i forces case-insensitive matching (smart-case was surprising users who
-  # typed e.g. "Transcript" expecting a case-blind match).
-  # --no-hscroll keeps the visible line pinned to the left; long dimmed tails
-  # clip off the right edge.
+
+  export CCSESH_UI_CACHE="$cache"
+
+  # fzf fields: 1=sid, 2=cwd, 3=ts_iso (hidden), 4=colored display + dimmed
+  # extended text (visible + searchable), 5=epoch (hidden, used by __fzf_feed).
+  #
+  # --disabled turns off fzf's internal matcher so the external __fzf_feed
+  # subcommand handles ALL filtering (repo:, since:, and text terms). Trade-off:
+  # match spans in the list are not highlighted, but the preview pane already
+  # highlights query matches in session content.
+  # -i is kept for clarity even though --disabled makes fzf ignore it.
   local selection rc
   selection="$(
-    printf '%s\n' "$lines" \
-      | fzf \
-          -i \
-          --ansi \
-          --no-hscroll \
-          --delimiter=$'\t' \
-          --with-nth=4 \
-          --prompt='ccsesh> ' \
-          --header='enter=resume  ctrl-o=print  esc=quit' \
-          --expect=ctrl-o \
-          --preview-window='right,50%,wrap' \
-          --preview "$CCSESH_DIR/bin/ccsesh __preview {2} {1} {q} 2>/dev/null"
+    fzf \
+      --disabled \
+      --ansi \
+      --no-hscroll \
+      --delimiter=$'\t' \
+      --with-nth=4 \
+      --prompt='ccsesh> ' \
+      --header='enter=resume  ctrl-o=print  esc=quit    filters: repo:X  since:Nd|Nh|Nm' \
+      --bind "start:reload($CCSESH_DIR/bin/ccsesh __fzf_feed {q})" \
+      --bind "change:reload($CCSESH_DIR/bin/ccsesh __fzf_feed {q})" \
+      --expect=ctrl-o \
+      --preview-window='right,50%,wrap' \
+      --preview "$CCSESH_DIR/bin/ccsesh __preview {2} {1} {q} 2>/dev/null" \
+      < /dev/null
   )"
   rc=$?
   # rc=130 -> Esc/no selection
