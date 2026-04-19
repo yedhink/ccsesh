@@ -5,6 +5,30 @@ _UI_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$_UI_DIR/util.sh"
 
+# Build a case-insensitive grep regex from an fzf-style query. Steps:
+#   - drop filter tokens (repo:, since:, name:)
+#   - drop negation tokens (!foo) — they exclude, we don't highlight exclusions
+#   - strip leading '  (exact), leading ^ (prefix), trailing $ (suffix)
+#   - regex-escape remaining positive terms and join with |
+# Prints the alternation regex. Empty stdout means "no highlight applicable".
+_ccsesh_ui_query_to_regex() {
+  local q="$1"
+  local tok parts="" esc
+  for tok in $q; do
+    case "$tok" in
+      repo:*|since:*|name:*) continue ;;
+      '!'*) continue ;;
+    esac
+    tok="${tok#\'}"
+    tok="${tok#^}"
+    tok="${tok%\$}"
+    [ -n "$tok" ] || continue
+    esc="$(printf '%s' "$tok" | sed -E 's/[][(){}.+*?^$|\\\/]/\\&/g')"
+    parts="${parts:+$parts|}$esc"
+  done
+  printf '%s' "$parts"
+}
+
 # Internal: emit ALL user-authored preview lines (no head cap). Used by
 # ccsesh_ui_preview which slices the output based on whether a query is
 # present. Every line is prefixed with "> ".
@@ -122,31 +146,31 @@ ccsesh_ui_preview() {
 
   _ccsesh_ui_preview_header_print "$f"
 
-  if [ -z "$q" ]; then
+  # Reduce the query to an alternation regex of positive terms, dropping
+  # filter tokens, negation tokens, and fzf operators.
+  local q_regex=""
+  [ -n "$q" ] && q_regex="$(_ccsesh_ui_query_to_regex "$q")"
+
+  if [ -z "$q_regex" ]; then
+    # Nothing to scroll to, nothing to highlight.
     _ccsesh_ui_preview_render "$f"
     return 0
   fi
-
-  # Escape regex metacharacters in the query so users searching for e.g.
-  # "2+2" don't get it interpreted as a regex.
-  local q_esc
-  q_esc="$(printf '%s' "$q" | sed -E 's/[][(){}.+*?^$|\\\/]/\\&/g')"
 
   local body
   body="$(_ccsesh_ui_preview_render_raw "$f")"
   [ -n "$body" ] || return 0
 
-  # Find line number of first match (case-insensitive). If none, anchor at
-  # line 1 so we still show the first 30 lines.
+  # Find line number of first match. If none, anchor at line 1 (top).
   local first_line
-  first_line="$(printf '%s\n' "$body" | grep -n -i -m 1 -E -- "$q_esc" 2>/dev/null \
+  first_line="$(printf '%s\n' "$body" | grep -n -i -m 1 -E -- "$q_regex" 2>/dev/null \
                 | head -n 1 | cut -d: -f1)"
   [ -n "$first_line" ] || first_line=1
 
   printf '%s\n' "$body" \
     | tail -n "+$first_line" \
     | head -n 30 \
-    | grep --color=always -iE -- "${q_esc}|$" 2>/dev/null \
+    | grep --color=always -iE -- "${q_regex}|$" 2>/dev/null \
     || printf '%s\n' "$body" | tail -n "+$first_line" | head -n 30
 }
 

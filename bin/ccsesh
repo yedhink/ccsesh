@@ -51,23 +51,15 @@ ccsesh_main() {
     case "$1" in
       __preview)
         # Hidden: called by fzf preview. Args: __preview <cwd> <sid> [<query>]
-        # Query may contain filter tokens (repo:X, since:Y) that should NOT
-        # be highlighted in the preview — strip them first.
+        # The query is passed through raw; ccsesh_ui_preview strips filter
+        # tokens, negations, and fzf operators when building its highlight regex.
         shift
         local _cwd="$1" _sid="$2" _q="${3:-}"
-        local _q_clean=""
-        local _tok
-        for _tok in $_q; do
-          case "$_tok" in
-            repo:*|since:*|name:*) ;;
-            *) _q_clean="${_q_clean:+$_q_clean }$_tok" ;;
-          esac
-        done
         local home; home="$(ccsesh_home)"
         local f
         for f in "$home/projects"/*/"$_sid".jsonl; do
           [ -f "$f" ] || continue
-          ccsesh_ui_preview "$f" "$_q_clean"
+          ccsesh_ui_preview "$f" "$_q"
           exit 0
         done
         printf '(session file not found)\n'
