@@ -44,6 +44,7 @@ The fzf query box supports two kinds of input combined freely: **filter tokens**
 |---|---|
 | `repo:NAME`    | Keep only sessions whose project directory basename contains `NAME` (case-insensitive substring). |
 | `since:7d`     | Keep only sessions newer than 7 days. Also accepts `Nh` (hours) and `Nm` (minutes). |
+| `name:NAME`    | Keep only sessions whose custom title contains `NAME` (case-insensitive substring). Sessions without a custom title are excluded. |
 
 **Free-text matching (fzf native, case-insensitive):**
 
@@ -61,10 +62,11 @@ The fzf query box supports two kinds of input combined freely: **filter tokens**
 transcript                          # any session mentioning transcript
 transcript repo:claude-skills       # narrow to that repo, then search
 since:7d !bugwatch                  # recent sessions, excluding bugwatch
+name:bugwatch                       # only sessions you renamed with "bugwatch" in the title
 ^2026-04-17 repo:neeto-products     # that day, in that repo
 ```
 
-Free text matches against the visible display field, which includes the short summary plus the first ~500 chars of user-authored content from the session (dimmed in the list, fully visible in the preview pane).
+Free text matches against the visible display field, which includes the custom title (if any), the short summary, and the first ~500 chars of user-authored content from the session (dimmed in the list, fully visible in the preview pane). Sessions you have renamed in Claude Code show a green `[title]` badge at the start of the row.
 
 ## How it works
 
