@@ -125,6 +125,14 @@ assert_eq "$got" "/Users/ikigai/dev/neeto-products" "cwd for session B resolves 
 got="$(ccsesh_session_cwd "$expected_c")"
 assert_eq "$got" "/tmp/definitely-does-not-exist-xyz" "cwd for session C preserves path even if dir gone"
 
+echo "== sessions.sh history =="
+
+got="$(ccsesh_history_display 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa')"
+assert_eq "$got" "Reverse a linked list in Rust please" "history_display picks most recent match"
+
+got="$(ccsesh_history_display 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb'; echo "[rc=$?]")"
+assert_match "$got" '^\[rc=1\]$' "history_display returns non-zero when no match"
+
 echo
 echo "passed: $_passed  failed: $_failed"
 [ "$_failed" -eq 0 ]
