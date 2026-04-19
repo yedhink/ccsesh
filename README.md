@@ -50,11 +50,11 @@ The fzf query box supports two kinds of input combined freely: **filter tokens**
 
 | Syntax | Meaning |
 |---|---|
-| `foo bar`      | Both terms must match (space = AND). |
-| `'foo`         | Exact substring match for `foo`. |
+| `foo bar`      | Both terms must match (space = AND). Each term is exact substring by default. |
 | `^foo`         | `foo` must be at the start of the line. |
 | `foo$`         | `foo` must be at the end. |
 | `!foo`         | `foo` must NOT appear (negation). |
+| `'foo`         | Fuzzy match for `foo` (letters can appear scattered in order). Opt-in override of the default substring behavior. |
 
 **Examples:**
 

@@ -122,12 +122,19 @@ ccsesh_main() {
           exit 0
         fi
 
-        # Apply text-match via fzf --filter. --tiebreak=index preserves the
-        # recency-desc order from the cache. --with-nth=4 scopes matching to
-        # the visible display field. -i forces case-insensitive.
+        # Apply text-match via fzf --filter.
+        # -e (exact) switches fzf from fuzzy to substring matching so the list
+        # stays consistent with the preview highlighter (which is grep
+        # substring). Without this, fuzzy lets e.g. "transcript" match any
+        # line whose letters appear scattered (via "script" + earlier chars),
+        # producing list rows with no visible highlight in preview.
+        # -i keeps it case-insensitive. --tiebreak=index preserves recency
+        # order. --with-nth=4 scopes matching to the visible display field.
+        # Users who want fuzzy back can prefix a term with ' (apostrophe).
         if [ -n "$_text" ]; then
           printf '%s\n' "$_filtered" \
             | fzf --filter="$_text" \
+                  -e \
                   -i \
                   --delimiter=$'\t' \
                   --with-nth=4 \
