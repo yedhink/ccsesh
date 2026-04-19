@@ -439,3 +439,17 @@ operators: foo bar (AND)  ^foo (prefix)  foo$ (suffix)  !foo (negate)  '\''foo (
       ;;
   esac
 }
+
+# Read the enter-command template from the user's config.json. Silent on
+# any error — returns empty stdout when:
+#   * config file is missing or unreadable
+#   * JSON is malformed (jq parse fails)
+#   * .enter.command key is absent or empty string
+#
+# Honors $CCSESH_CONFIG as an override path (for tests and tooling).
+# Default path is ${XDG_CONFIG_HOME:-$HOME/.config}/ccsesh/config.json.
+_ccsesh_config_enter_cmd() {
+  local cfg="${CCSESH_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/ccsesh/config.json}"
+  [ -r "$cfg" ] || return 0
+  jq -r '(.enter.command // "")' "$cfg" 2>/dev/null
+}
