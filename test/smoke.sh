@@ -150,6 +150,18 @@ got="$(ccsesh_session_summary "$empty" 'zzzzzzzz-zzzz-4zzz-zzzz-zzzzzzzzzzzz')"
 assert_eq "$got" "<no prompt yet>" "empty session: final fallback"
 rm -f "$empty"
 
+echo "== sessions.sh recency + count =="
+
+got="$(ccsesh_session_recency "$expected_a")"
+# 2026-04-18T10:00:06Z = 1776506406
+assert_eq "$got" "1776506406" "recency A = last event timestamp"
+
+got="$(ccsesh_session_count "$expected_a")"
+assert_eq "$got" "2" "count A = 1 user (non-meta) + 1 assistant"
+
+got="$(ccsesh_session_count "$expected_b")"
+assert_eq "$got" "2" "count B = 1 user (array, non-meta) + 1 assistant, truncated line skipped"
+
 echo
 echo "passed: $_passed  failed: $_failed"
 [ "$_failed" -eq 0 ]
