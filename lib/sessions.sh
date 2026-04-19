@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -u
 
+_SESSIONS_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+. "$_SESSIONS_DIR/util.sh"
+
 # Resolve the Claude home dir. Callers may override with $CCSESH_CLAUDE_HOME.
 ccsesh_home() {
   printf '%s\n' "${CCSESH_CLAUDE_HOME:-$HOME/.claude}"
@@ -55,4 +59,48 @@ ccsesh_history_display() {
   ' < "$hist" 2>/dev/null | sort -rn | head -n 1 | cut -f2-)"
   [ -n "$out" ] || return 1
   printf '%s\n' "$out"
+}
+
+# Internal: extract best candidate user-authored text from a .jsonl.
+# Priority within the file:
+#   1. First non-meta user record where .message.content is a string and
+#      does not begin with <command-, <local-command-, or <system-reminder>.
+#   2. First non-meta user record with array content: first element whose
+#      .type == "text" and .text doesn't start with those wrappers.
+# Emits nothing (and returns non-zero) if no candidate is found.
+_ccsesh_extract_user_text() {
+  local f="$1"
+  local out
+  out="$(jq -Rr '
+    fromjson?
+    | select(.type == "user" and ((.isMeta // false) | not))
+    | .message.content as $c
+    | if ($c | type) == "string" then
+        if ($c | test("^<(command-|local-command-|system-reminder)")) then empty else $c end
+      elif ($c | type) == "array" then
+        ( [ $c[]
+            | select(.type == "text" and (.text // "") != "")
+            | select(.text | test("^<(command-|local-command-|system-reminder)") | not)
+            | .text ][0] // empty )
+      else empty end
+  ' < "$f" 2>/dev/null | head -n 1)"
+  [ -n "$out" ] || return 1
+  printf '%s' "$out"
+}
+
+# Public: resolve display summary for a session. Always prints exactly one
+# line; never fails (falls through to "<no prompt yet>").
+ccsesh_session_summary() {
+  local f="$1" sid="$2"
+  local raw
+  if raw="$(ccsesh_history_display "$sid")"; then :; else
+    if raw="$(_ccsesh_extract_user_text "$f")"; then :; else
+      raw="<no prompt yet>"
+    fi
+  fi
+  printf '%s' "$raw" \
+    | ccsesh_strip_controls \
+    | ccsesh_flatten \
+    | ccsesh_truncate 80
+  printf '\n'
 }
