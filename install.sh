@@ -68,6 +68,23 @@ install_symlink() {
   fi
 }
 
+install_config_examples() {
+  local cfg_dir="${XDG_CONFIG_HOME:-$HOME/.config}/ccsesh"
+  local src="$CCSESH_DIR/config.example.jsonc"
+  local dst="$cfg_dir/config.example.jsonc"
+
+  [ -r "$src" ] || return 0
+
+  mkdir -p "$cfg_dir"
+
+  if [ -e "$dst" ]; then
+    info "✓ config examples already at $dst"
+  else
+    cp -- "$src" "$dst"
+    info "✓ config examples copied to $dst"
+  fi
+}
+
 path_advice() {
   case ":$PATH:" in *":$TARGET_DIR:"*) return 0 ;; esac
   local shell_name; shell_name="$(basename "${SHELL:-/bin/sh}")"
@@ -88,6 +105,7 @@ main() {
   check_cmd claude || warn "claude not on PATH. ccsesh will install but resume won't work until you install Claude Code."
   install_deps || { warn "dependency install failed; aborting"; exit 1; }
   install_symlink
+  install_config_examples
   path_advice
   info ""
   info "✓ installed — run 'ccsesh' to get started"
