@@ -267,14 +267,25 @@ operators: foo bar (AND)  ^foo (prefix)  foo$ (suffix)  !foo (negate)  '\''foo (
     ctrl-o)
       proj_base="$(basename "$cwd" 2>/dev/null)"
       [ -n "$proj_base" ] || proj_base="(unknown)"
-      # Header: comma-separated sid, repo name, and optional custom title.
-      if [ -n "$title" ]; then
-        printf '%s, %s, %s\n' "$sid" "$proj_base" "$title"
-      else
-        printf '%s, %s\n' "$sid" "$proj_base"
+      local c_border='' c_label='' c_title='' c_cmd='' c_reset=''
+      if [ -t 1 ]; then
+        c_border=$'\033[36m'   # cyan box rule
+        c_label=$'\033[1m'     # bold labels
+        c_title=$'\033[1;32m'  # green for the custom title (matches list badge)
+        c_cmd=$'\033[2m'       # dim for the resume command (copy-paste material)
+        c_reset=$'\033[0m'
       fi
-      # Resume command. `claude --resume` is cwd-scoped, so we emit the cd too.
-      printf 'cd -- %q && claude --resume %s\n' "$cwd" "$sid"
+      printf '%s╭─ Session ─────────────────────────────%s\n' "$c_border" "$c_reset"
+      printf '%s│%s  %sSession ID:%s  %s\n' "$c_border" "$c_reset" "$c_label" "$c_reset" "$sid"
+      printf '%s│%s  %sRepo:%s        %s\n' "$c_border" "$c_reset" "$c_label" "$c_reset" "$proj_base"
+      if [ -n "$title" ]; then
+        printf '%s│%s  %sName:%s        %s%s%s\n' "$c_border" "$c_reset" "$c_label" "$c_reset" "$c_title" "$title" "$c_reset"
+      fi
+      printf '%s│%s  %sPath:%s        %s\n' "$c_border" "$c_reset" "$c_label" "$c_reset" "$cwd"
+      printf '%s│%s\n' "$c_border" "$c_reset"
+      printf '%s│%s  %sResume (cwd-scoped):%s\n' "$c_border" "$c_reset" "$c_label" "$c_reset"
+      printf '%s│%s    %scd -- %q && claude --resume %s%s\n' "$c_border" "$c_reset" "$c_cmd" "$cwd" "$sid" "$c_reset"
+      printf '%s╰────────────────────────────────────────%s\n' "$c_border" "$c_reset"
       return 0 ;;
     *)
       if [ ! -d "$cwd" ]; then

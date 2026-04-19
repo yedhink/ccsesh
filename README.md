@@ -31,12 +31,19 @@ ccsesh --version
 
 Keybindings inside the picker:
 - `Enter` — `cd` into the session's original project dir and run `claude --resume <id>`.
-- `Ctrl-O` — print a two-line summary of the selected session and exit:
+- `Ctrl-O` — print a labeled summary of the selected session and exit:
   ```
-  <sessionId>, <repo-name>[, <custom-title>]
-  cd -- <cwd> && claude --resume <sessionId>
+  ╭─ Session ─────────────────────────────
+  │  Session ID:  <sessionId>
+  │  Repo:        <repo-name>
+  │  Name:        <custom-title>          (omitted when the session has no title)
+  │  Path:        <cwd>
+  │
+  │  Resume (cwd-scoped):
+  │    cd -- <cwd> && claude --resume <sessionId>
+  ╰────────────────────────────────────────
   ```
-  Useful for scripting or for quickly grabbing a ready-to-paste resume command.
+  Colors drop when stdout is not a TTY (safe for piping into other scripts).
 - `Esc` — quit.
 
 ## Search syntax
