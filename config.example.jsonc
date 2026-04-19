@@ -21,7 +21,8 @@
 // directory in the ccsesh repo for ready-made wrappers.
 
 // ── WezTerm: resume in a new tab ──────────────────────────────────────
-// { "enter": { "command": "wezterm cli spawn --cwd {cwd} -- claude --resume {sid}" } }
+// Ready-made wrapper in examples/wezterm-new-tab handles the PATH issue.
+// { "enter": { "command": "~/.local/bin/wezterm-new-tab {sid} {cwd}" } }
 
 // ── iTerm2: resume in a new tab via AppleScript (PATH-sensitive) ──────
 // { "enter": { "command": "osascript -e 'tell application \"iTerm\" to tell current window to create tab with default profile command \"cd {cwd} && claude --resume {sid}\"'" } }

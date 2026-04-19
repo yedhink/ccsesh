@@ -31,6 +31,14 @@ Handles one non-obvious gotcha: Ghostty runs the configured `command` via `/bin/
 
 First invocation will trigger a macOS Automation permission prompt for Ghostty — approve once, subsequent runs are silent.
 
+### `wezterm-new-tab`
+
+Opens the resumed session in a new [WezTerm](https://wezfurlong.org/wezterm) tab at the session's original `cwd`. Uses `wezterm cli spawn` (no AppleScript needed) — the spawned tab lands in the window hosting the ccsesh pane, detected automatically via `$WEZTERM_PANE`.
+
+Same PATH gotcha as `ghostty-new-tab`: `wezterm cli spawn` execs the command directly with WezTerm's GUI-process PATH, which typically lacks Homebrew when WezTerm was launched from Finder. The wrapper resolves `claude`'s absolute path first, sidestepping the issue.
+
+`wezterm cli spawn` normally prints the new pane id to stdout; the wrapper suppresses that so fzf doesn't flash it between picks.
+
 ## Contributing a new example
 
 PRs welcome. Guidelines:

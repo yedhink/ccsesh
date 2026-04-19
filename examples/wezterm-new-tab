@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# ccsesh Enter-action helper: open the resumed session in a new WezTerm tab.
+#
+# Uses wezterm's built-in CLI over its Unix socket. When ccsesh is invoked
+# from inside a WezTerm pane, `wezterm cli spawn` spawns the new tab into
+# the same window (detected via $WEZTERM_PANE, which WezTerm sets
+# automatically).
+#
+# Usage: wezterm-new-tab <sessionId> <cwd>
+#
+# Install:
+#   cp examples/wezterm-new-tab ~/.local/bin/
+#   chmod +x ~/.local/bin/wezterm-new-tab
+#
+# Wire up via ~/.config/ccsesh/config.json:
+#   { "enter": { "command": "~/.local/bin/wezterm-new-tab {sid} {cwd}" } }
+set -u
+
+sid="${1:-}"
+cwd="${2:-}"
+
+if [ -z "$sid" ] || [ -z "$cwd" ]; then
+  echo "wezterm-new-tab: missing sid or cwd argument" >&2
+  exit 2
+fi
+
+if [ ! -d "$cwd" ]; then
+  echo "wezterm-new-tab: cwd not a directory: $cwd" >&2
+  exit 1
+fi
+
+# `wezterm cli spawn` exec's the target command directly (not via a shell),
+# inheriting PATH from the WezTerm GUI process. When WezTerm was launched
+# from Finder/Spotlight, that PATH does NOT include Homebrew or other
+# per-user additions. Resolve `claude` here (in a normal shell with PATH
+# intact) and hand the absolute path to wezterm, sidestepping the issue.
+claude_bin="$(command -v claude)"
+if [ -z "$claude_bin" ]; then
+  echo "wezterm-new-tab: claude not on PATH" >&2
+  exit 127
+fi
+
+# `wezterm cli spawn` prints the new pane id to stdout on success. That's
+# noisy when invoked from fzf's `execute` action — suppress it. Errors
+# (wezterm not running, socket closed, etc.) still reach stderr.
+#
+# By default the tab closes when the spawned command exits. Since `claude`
+# runs interactively until the user types `/exit`, that's fine — the tab
+# stays open while the session is in use and closes when the user quits it.
+# To keep closed tabs around instead, set `exit_behavior = "Hold"` in your
+# ~/.wezterm.lua.
+exec wezterm cli spawn --cwd "$cwd" -- "$claude_bin" --resume "$sid" >/dev/null
