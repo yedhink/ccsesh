@@ -241,7 +241,7 @@ ccsesh_ui_run() {
       --prompt='ccsesh> ' \
       --header='enter=resume  ctrl-o=print  esc=quit
 filters: repo:X  since:Nd|Nh|Nm  name:X
-operators: foo bar (AND)  '\''foo (exact)  ^foo (prefix)  foo$ (suffix)  !foo (negate)' \
+operators: foo bar (AND)  ^foo (prefix)  foo$ (suffix)  !foo (negate)  '\''foo (fuzzy)' \
       --bind "start:reload($CCSESH_DIR/bin/ccsesh __fzf_feed {q})" \
       --bind "change:reload($CCSESH_DIR/bin/ccsesh __fzf_feed {q})" \
       --expect=ctrl-o \
