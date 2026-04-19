@@ -454,6 +454,58 @@ assert_eq "$got" "" "config reader: malformed JSON returns empty"
 unset CCSESH_CONFIG
 rm -rf "$enter_cfg_dir"
 
+echo "== custom enter: template expander =="
+
+enter_tpl_dir="/tmp/ccsesh-enter-tpl-$$"
+rm -rf "$enter_tpl_dir"
+mkdir -p "$enter_tpl_dir"
+
+# 1. No config: expander returns empty regardless of sid/cwd.
+export CCSESH_CONFIG="$enter_tpl_dir/missing.json"
+got="$(_ccsesh_ui_enter_expand 'some-sid' '/tmp/foo')"
+assert_eq "$got" "" "expander: empty when no config"
+
+# 2. Plain template substitution.
+cat > "$enter_tpl_dir/plain.json" <<'JSON'
+{ "enter": { "command": "echo {sid} in {cwd}" } }
+JSON
+export CCSESH_CONFIG="$enter_tpl_dir/plain.json"
+got="$(_ccsesh_ui_enter_expand 'abc-123' '/tmp/foo')"
+assert_eq "$got" "echo abc-123 in /tmp/foo" "expander: substitutes both placeholders"
+
+# 3. cwd with a space — must be shell-escaped.
+got="$(_ccsesh_ui_enter_expand 'abc-123' '/tmp/has space')"
+# `printf %q` on bash 3.2 produces `/tmp/has\ space` (backslash-space form).
+# Accept either backslash-space or single-quoted forms to be robust against
+# bash version differences on Linux CI.
+case "$got" in
+  "echo abc-123 in /tmp/has\\ space"|\
+  "echo abc-123 in '/tmp/has space'")
+    _passed=$((_passed+1)); echo "  ok  expander: shell-escapes cwd with space" ;;
+  *)
+    _failed=$((_failed+1));
+    printf '  FAIL expander: shell-escapes cwd with space\n    got: %q\n' "$got" ;;
+esac
+
+# 4. Placeholder appearing multiple times — both get substituted.
+cat > "$enter_tpl_dir/repeat.json" <<'JSON'
+{ "enter": { "command": "do {sid}; then {sid} again" } }
+JSON
+export CCSESH_CONFIG="$enter_tpl_dir/repeat.json"
+got="$(_ccsesh_ui_enter_expand 'abc' '/tmp/foo')"
+assert_eq "$got" "do abc; then abc again" "expander: substitutes repeated placeholders"
+
+# 5. Template without placeholders passes through unchanged.
+cat > "$enter_tpl_dir/literal.json" <<'JSON'
+{ "enter": { "command": "echo hello" } }
+JSON
+export CCSESH_CONFIG="$enter_tpl_dir/literal.json"
+got="$(_ccsesh_ui_enter_expand 'abc' '/tmp/foo')"
+assert_eq "$got" "echo hello" "expander: passes through literal command"
+
+unset CCSESH_CONFIG
+rm -rf "$enter_tpl_dir"
+
 echo
 echo "passed: $_passed  failed: $_failed"
 [ "$_failed" -eq 0 ]
