@@ -176,8 +176,12 @@ _ccsesh_normalize_path() {
   else printf '%s\n' "$p"; fi
 }
 
-# Public list.
-ccsesh_sessions_list() {
+# Internal: raw 8-field pipeline — epoch \t sid \t cwd \t iso_ts \t count \t ver \t summary \t extended.
+# Sorted desc by epoch. Used by both the public --list wrapper (which drops
+# epoch + extended) and by the UI layer (which drops only epoch).
+#
+# Accepts the same --project / --since flags as the public list.
+_ccsesh_sessions_list_raw() {
   local project="" since_sec=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -194,20 +198,119 @@ ccsesh_sessions_list() {
   local cutoff=""
   [ -n "$since_sec" ] && cutoff="$(( $(date +%s) - since_sec ))"
 
-  local f sid cwd rec_ts row
+  _ccsesh_debug "list: project=${project:-(any)} since_sec=${since_sec:-(none)}"
+
+  local hist_map
+  hist_map="$(mktemp -t ccsesh.XXXXXX)"
+  _ccsesh_debug "list: scanning history.jsonl"
+  _ccsesh_history_map > "$hist_map"
+  _ccsesh_debug "list: history map has $(grep -c '' "$hist_map") entries"
+
+  local f raw sid cwd raw_ts count ver summary extended epoch hist_display ts_final
+  local emitted=0
+  _ccsesh_debug "list: starting per-session loop"
   while IFS= read -r f; do
-    sid="$(ccsesh_session_id "$f")"
+    raw="$(_ccsesh_row_extract "$f")" || continue
+    IFS=$'\t' read -r sid cwd raw_ts count ver summary extended <<<"$raw"
     [ -n "$sid" ] || continue
-    cwd="$(ccsesh_session_cwd "$f")" || cwd=""
+
     if [ -n "$project" ] && [ "$cwd" != "$project" ]; then continue; fi
-    rec_ts="$(ccsesh_session_recency "$f")"
-    if [ -n "$cutoff" ] && [ "$rec_ts" -lt "$cutoff" ]; then continue; fi
-    # Prefix with epoch for sort, strip after.
-    row="$(ccsesh_session_row "$f")"
-    printf '%s\t%s\n' "$rec_ts" "$row"
+
+    epoch=""
+    if [ -n "$raw_ts" ]; then epoch="$(ccsesh_iso_to_epoch "$raw_ts")"; fi
+    if [ -z "$epoch" ]; then epoch="$(ccsesh_stat_mtime "$f" 2>/dev/null)" || epoch=""; fi
+    [ -n "$epoch" ] || continue
+
+    if [ -n "$cutoff" ] && [ "$epoch" -lt "$cutoff" ]; then continue; fi
+
+    # History display override.
+    hist_display="$(awk -F'\t' -v sid="$sid" '$1==sid { print $2; exit }' "$hist_map")"
+    [ -n "$hist_display" ] && summary="$hist_display"
+    [ -n "$summary" ] || summary="<no prompt yet>"
+
+    # Sanitize.
+    summary="$(printf '%s' "$summary" | ccsesh_strip_controls | ccsesh_flatten | ccsesh_truncate 80)"
+    extended="$(printf '%s' "$extended" | ccsesh_strip_controls | ccsesh_flatten | ccsesh_truncate 500)"
+
+    ts_final="$(_ccsesh_epoch_to_iso_offset "$epoch")"
+
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$epoch" "$sid" "$cwd" "$ts_final" "$count" "$ver" "$summary" "$extended"
+    emitted=$((emitted+1))
   done < <(ccsesh_sessions_discover) \
-    | sort -t $'\t' -k1,1rn \
-    | cut -f2-
+    | sort -t $'\t' -k1,1rn
+
+  rm -f "$hist_map"
+  _ccsesh_debug "list: done, emitted=$emitted"
+}
+
+# Public: human-facing 6-field TSV. Same contract as before.
+ccsesh_sessions_list() {
+  local _rc=0
+  (set -o pipefail; _ccsesh_sessions_list_raw "$@" | cut -f 2-7) || _rc=$?
+  return $_rc
+}
+
+# Internal: extract all per-session fields in ONE jq pass.
+# Prints: raw_sid \t raw_cwd \t raw_iso_ts \t raw_count \t raw_version \t raw_summary \t raw_extended
+# Fields are NOT sanitized — caller must strip controls/flatten/truncate before use.
+# Returns non-zero if the file can't be read or yields no sessionId.
+_ccsesh_row_extract() {
+  local f="$1"
+  [ -r "$f" ] || return 1
+  local out
+  out="$(jq -Rsr '
+    def user_text:
+      . as $c
+      | if ($c | type) == "string" then
+          (if ($c | test("^<(command-|local-command-|system-reminder)")) then "" else $c end)
+        elif ($c | type) == "array" then
+          ([ $c[]
+            | select(.type == "text" and (.text // "") != "")
+            | select(.text | test("^<(command-|local-command-|system-reminder)") | not)
+            | .text
+          ][0] // "")
+        else "" end;
+
+    (split("\n") | map(fromjson?) | map(select(. != null))) as $R
+    | ([$R[] | select(.sessionId != null) | .sessionId] | first // "") as $sid
+    | ([$R[] | select(.cwd != null) | .cwd] | first // "") as $cwd
+    | ([$R[] | select(.version != null) | .version] | first // "") as $ver
+    | ([ $R[]
+       | select(.type == "user" and ((.isMeta // false) | not))
+       | (.message.content | user_text)
+       | select(. != "")
+       ]) as $texts
+    | [
+        $sid,
+        $cwd,
+        ([$R[] | .timestamp // empty] | max // ""),
+        ([$R[] | select((.type == "user" or .type == "assistant") and ((.isMeta // false) | not))] | length | tostring),
+        $ver,
+        ($texts[0] // ""),
+        ($texts | join(" ") | .[0:500])
+      ]
+    | @tsv
+  ' < "$f" 2>/dev/null)"
+  [ -n "$out" ] || return 1
+  # Guard: must have a non-empty sessionId in field 1.
+  case "$out" in $'\t'*) return 1 ;; esac
+  printf '%s\n' "$out"
+}
+
+# Internal: print sid\tdisplay lines for every unique sessionId in
+# history.jsonl, keeping the most recent display per sessionId.
+# Silent (no output) if history.jsonl is missing.
+_ccsesh_history_map() {
+  local hist; hist="$(ccsesh_home)/history.jsonl"
+  [ -r "$hist" ] || return 0
+  jq -Rr '
+    fromjson?
+    | select(.sessionId != null and (.display // "") != "")
+    | [(.timestamp // 0), .sessionId, .display] | @tsv
+  ' < "$hist" 2>/dev/null \
+    | sort -k1,1rn -t $'\t' \
+    | awk -F'\t' '!seen[$2]++ { print $2 "\t" $3 }'
 }
 
 # Emit a single TSV row for a session .jsonl.
