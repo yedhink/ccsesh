@@ -60,3 +60,12 @@ ccsesh_truncate() {
   local n="$1"
   head -c "$n"
 }
+
+# Append a timestamped message to /tmp/ccsesh-debug.log when CCSESH_DEBUG is
+# set to a non-empty value. No-op (and cheap) otherwise. Never fails.
+_ccsesh_debug() {
+  [ -n "${CCSESH_DEBUG:-}" ] || return 0
+  local ts
+  ts="$(date '+%Y-%m-%dT%H:%M:%S%z' 2>/dev/null)"
+  printf '[%s] %s\n' "$ts" "$*" >> /tmp/ccsesh-debug.log 2>/dev/null || true
+}
