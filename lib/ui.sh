@@ -431,10 +431,16 @@ operators: foo bar (AND)  ^foo (prefix)  foo$ (suffix)  !foo (negate)  '\''foo (
         printf 'ccsesh: session transcript remains on disk.\n' >&2
         return 1
       fi
+      # Custom Enter: if the user has configured .enter.command in
+      # config.json, exec that instead. {sid}/{cwd} are shell-escaped.
+      local custom
+      custom="$(_ccsesh_ui_enter_expand "$sid" "$cwd")"
+      if [ -n "$custom" ]; then
+        _ccsesh_debug "ui: enter via config → $custom"
+        exec sh -c "$custom"
+      fi
+      # Default Enter: cd into the session's cwd and resume claude.
       command -v claude >/dev/null 2>&1 || { echo "ccsesh: claude not on PATH" >&2; return 127; }
-      # Default Enter action: cd into the session's cwd and resume claude.
-      # A user-configured custom command (see _ccsesh_ui_enter_expand) will
-      # pre-empt this path when present.
       cd -- "$cwd" && exec claude --resume "$sid"
       ;;
   esac
