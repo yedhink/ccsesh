@@ -49,7 +49,19 @@ ccsesh_fixture_build() {
   local c="$root/projects/-tmp-deleted-project/cccccccc-cccc-4ccc-cccc-cccccccccccc.jsonl"
   printf '%s\n' '{"type":"user","sessionId":"cccccccc-cccc-4ccc-cccc-cccccccccccc","cwd":"/tmp/definitely-does-not-exist-xyz","gitBranch":"main","version":"2.1.83","timestamp":"2026-04-17T08:00:00.000Z","message":{"role":"user","content":"What happened to this project?"}}' > "$c"
 
-  # history.jsonl: one match for session A (display differs from .jsonl prompt to prove we prefer history), no row for B (so .jsonl fallback kicks in), no row for C.
+  # Session D: newest. Has a custom-title record; user AND assistant both
+  # mention "webhook" (for highlight-scope tests). Assistant mentions
+  # "signature" which the user does NOT — used to verify filter ignores
+  # assistant text. Opening user message has 3 sentences (to exercise the
+  # 2-sentence truncation + "…" ellipsis in the preview header snippet).
+  local d="$root/projects/-Users-ikigai-dev-neeto-products/dddddddd-dddd-4ddd-dddd-dddddddddddd.jsonl"
+  {
+    printf '%s\n' '{"type":"user","sessionId":"dddddddd-dddd-4ddd-dddd-dddddddddddd","cwd":"/Users/ikigai/dev/neeto-products","gitBranch":"main","version":"2.1.90","timestamp":"2026-04-18T11:00:00.000Z","message":{"role":"user","content":"Debug the webhook handler. The validation seems off on some events. I see timeouts too."}}'
+    printf '%s\n' '{"type":"assistant","sessionId":"dddddddd-dddd-4ddd-dddd-dddddddddddd","cwd":"/Users/ikigai/dev/neeto-products","gitBranch":"main","version":"2.1.90","timestamp":"2026-04-18T11:00:05.000Z","message":{"role":"assistant","content":"The webhook handler at webhooks.rb needs signature validation."}}'
+    printf '%s\n' '{"type":"custom-title","sessionId":"dddddddd-dddd-4ddd-dddd-dddddddddddd","customTitle":"webhook-debugging"}'
+  } > "$d"
+
+  # history.jsonl: one match for session A (display differs from .jsonl prompt to prove we prefer history), no row for B (so .jsonl fallback kicks in), no row for C or D.
   {
     printf '%s\n' '{"display":"Reverse a linked list in Rust please","timestamp":1776470405000,"project":"/Users/ikigai/dev/neeto-products","sessionId":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa"}'
     printf '%s\n' '{"display":"some older aaaaaa prompt","timestamp":1776460000000,"project":"/Users/ikigai/dev/neeto-products","sessionId":"aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa"}'
@@ -59,6 +71,7 @@ ccsesh_fixture_build() {
   touch -t 202604181000.00 "$a"
   touch -t 202604180900.00 "$b"
   touch -t 202604170800.00 "$c"
+  touch -t 202604181100.00 "$d"
 }
 
 echo "== util.sh =="
@@ -107,12 +120,14 @@ export CCSESH_CLAUDE_HOME="$fixture_root"
 got=( $(ccsesh_sessions_discover | LC_ALL=C sort) )
 expected_a="$fixture_root/projects/-Users-ikigai-dev-neeto-products/aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa.jsonl"
 expected_b="$fixture_root/projects/-Users-ikigai-dev-neeto-products/bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb.jsonl"
+expected_d="$fixture_root/projects/-Users-ikigai-dev-neeto-products/dddddddd-dddd-4ddd-dddd-dddddddddddd.jsonl"
 expected_c="$fixture_root/projects/-tmp-deleted-project/cccccccc-cccc-4ccc-cccc-cccccccccccc.jsonl"
 
-assert_eq "${#got[@]}" "3" "discover finds exactly 3 sessions"
+assert_eq "${#got[@]}" "4" "discover finds exactly 4 sessions"
 assert_eq "${got[0]}" "$expected_a" "discover[0] is session A"
 assert_eq "${got[1]}" "$expected_b" "discover[1] is session B"
-assert_eq "${got[2]}" "$expected_c" "discover[2] is session C"
+assert_eq "${got[2]}" "$expected_d" "discover[2] is session D (same project as A/B)"
+assert_eq "${got[3]}" "$expected_c" "discover[3] is session C (different project)"
 
 echo "== sessions.sh cwd =="
 
@@ -183,19 +198,20 @@ assert_match "$(printf '%s' "$row" | cut -f3)" '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9
 
 echo "== sessions.sh list =="
 
-# Default: all 3 rows, sorted by recency desc (A, B, C by our fixture mtimes/timestamps).
+# Default: all 4 rows, sorted by recency desc. Recency order: D (11:00) > A
+# (10:00) > B (09:00) > C (yesterday at 08:00).
 rows="$(ccsesh_sessions_list)"
 line_count="$(printf '%s' "$rows" | grep -c '')"
-assert_eq "$line_count" "3" "list default: 3 rows"
+assert_eq "$line_count" "4" "list default: 4 rows"
 first_sid="$(printf '%s' "$rows" | head -n 1 | cut -f1)"
-assert_eq "$first_sid" "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa" "list default: newest first = A"
+assert_eq "$first_sid" "dddddddd-dddd-4ddd-dddd-dddddddddddd" "list default: newest first = D"
 last_sid="$(printf '%s' "$rows" | tail -n 1 | cut -f1)"
 assert_eq "$last_sid" "cccccccc-cccc-4ccc-cccc-cccccccccccc" "list default: oldest last = C"
 
-# --project filter
+# --project filter — A, B, D share this cwd.
 rows="$(ccsesh_sessions_list --project /Users/ikigai/dev/neeto-products)"
 line_count="$(printf '%s' "$rows" | grep -c '')"
-assert_eq "$line_count" "2" "list --project filters to matching cwd"
+assert_eq "$line_count" "3" "list --project filters to matching cwd (A, B, D)"
 
 # --since 2d (from 2026-04-18 00:00 UTC). Session C has ts 2026-04-17 which is within 2d, so all 3.
 # --since 1h (relative to now) - on a real run, probably 0. Just ensure command runs.
@@ -217,7 +233,7 @@ assert_match "$out" '\-\-list' "--help documents --list"
 
 out="$(CCSESH_CLAUDE_HOME="$fixture_root" "$REPO_DIR/bin/ccsesh" --list)"
 line_count="$(printf '%s\n' "$out" | grep -c '')"
-assert_eq "$line_count" "3" "--list against fixture: 3 rows"
+assert_eq "$line_count" "4" "--list against fixture: 4 rows"
 
 rc=0; "$REPO_DIR/bin/ccsesh" --bogus >/dev/null 2>&1 || rc=$?
 assert_eq "$rc" "2" "unknown flag exits 2"
@@ -241,6 +257,154 @@ if printf '%s' "$preview" | grep -q 'tool_result'; then
   _failed=$((_failed+1)); echo "  FAIL preview B excludes tool_result"
 else
   _passed=$((_passed+1)); echo "  ok  preview B excludes tool_result"
+fi
+
+echo "== custom-title extraction =="
+
+# Session D has a custom-title record; the raw 9-field pipeline must expose it.
+title_d="$(jq -Rsr "$_CCSESH_ROW_JQ" "$expected_d" 2>/dev/null | awk -F'\t' '{print $9}')"
+assert_eq "$title_d" "webhook-debugging" "row_extract emits custom-title as field 9"
+
+# Session A has NO custom-title → empty string (not 'null').
+title_a="$(jq -Rsr "$_CCSESH_ROW_JQ" "$expected_a" 2>/dev/null | awk -F'\t' '{print $9}')"
+assert_eq "$title_a" "" "row_extract emits empty title when session lacks custom-title"
+
+echo "== query regex builder =="
+
+got="$(_ccsesh_ui_query_to_regex 'transcript')"
+assert_eq "$got" "transcript" "plain term passes through"
+
+got="$(_ccsesh_ui_query_to_regex 'transcript !neeraj')"
+assert_eq "$got" "transcript" "negation term is dropped"
+
+got="$(_ccsesh_ui_query_to_regex '!neeraj')"
+assert_eq "$got" "" "only-negation query yields empty regex"
+
+got="$(_ccsesh_ui_query_to_regex '^2026 transcript')"
+assert_eq "$got" "2026|transcript" "prefix caret stripped, terms alternated"
+
+got="$(_ccsesh_ui_query_to_regex 'foo$')"
+assert_eq "$got" "foo" "suffix dollar stripped"
+
+got="$(_ccsesh_ui_query_to_regex "'foo")"
+assert_eq "$got" "foo" "leading apostrophe stripped"
+
+got="$(_ccsesh_ui_query_to_regex 'repo:foo since:7d name:bar baz')"
+assert_eq "$got" "baz" "filter tokens dropped"
+
+got="$(_ccsesh_ui_query_to_regex 'a.b c+d')"
+assert_eq "$got" 'a\.b|c\+d' "regex metacharacters escaped"
+
+echo "== __fzf_feed filters =="
+
+# Build the UI cache the way ccsesh_ui_run does.
+fzf_cache="$(mktemp -t ccsesh.test.XXXXXX)"
+_ccsesh_sessions_list_raw | _ccsesh_ui_build_lines > "$fzf_cache"
+export CCSESH_UI_CACHE="$fzf_cache"
+
+# Empty query: all 4 rows pass through.
+got_n="$("$REPO_DIR/bin/ccsesh" __fzf_feed '' | grep -c '')"
+assert_eq "$got_n" "4" "__fzf_feed empty query returns all 4"
+
+# repo: filter narrows on basename(cwd), NOT on the encoded projects-dir
+# name. Session C's cwd basename is "definitely-does-not-exist-xyz".
+got_n="$("$REPO_DIR/bin/ccsesh" __fzf_feed 'repo:does-not-exist' | grep -c '')"
+assert_eq "$got_n" "1" "__fzf_feed repo: matches basename(cwd), not projects-dir name"
+
+got_n="$("$REPO_DIR/bin/ccsesh" __fzf_feed 'repo:neeto-products' | grep -c '')"
+assert_eq "$got_n" "3" "__fzf_feed repo:neeto-products matches A, B, D"
+
+# name: filter — only D has a custom-title.
+got_n="$("$REPO_DIR/bin/ccsesh" __fzf_feed 'name:webhook' | grep -c '')"
+assert_eq "$got_n" "1" "__fzf_feed name:webhook matches only D"
+
+got_n="$("$REPO_DIR/bin/ccsesh" __fzf_feed 'name:nonexistent' | grep -c '')"
+assert_eq "$got_n" "0" "__fzf_feed name:nonexistent matches nothing"
+
+# Text search is substring-exact (NOT fuzzy). "wbhk" should not match "webhook"
+# even though the letters appear in order.
+got_n="$("$REPO_DIR/bin/ccsesh" __fzf_feed 'wbhk' | grep -c '')"
+assert_eq "$got_n" "0" "__fzf_feed in exact mode does not do fuzzy matching"
+
+got_n="$("$REPO_DIR/bin/ccsesh" __fzf_feed 'webhook' | grep -c '')"
+assert_eq "$got_n" "1" "__fzf_feed 'webhook' substring match hits D"
+
+# Filter scope is user-only — 'signature' appears only in D's assistant
+# reply, so D must NOT match.
+got_n="$("$REPO_DIR/bin/ccsesh" __fzf_feed 'signature' | grep -c '')"
+assert_eq "$got_n" "0" "__fzf_feed ignores assistant-only text"
+
+# Combined filters AND together.
+got_n="$("$REPO_DIR/bin/ccsesh" __fzf_feed 'webhook repo:neeto-products' | grep -c '')"
+assert_eq "$got_n" "1" "__fzf_feed combines text + repo filters"
+
+rm -f "$fzf_cache"
+
+echo "== preview highlight scope (user-only) =="
+
+# Query 'webhook' matches both user and assistant lines in session D.
+# The highlight ANSI (\033[01;31m) must appear only on the user line.
+preview_d="$(ccsesh_ui_preview "$expected_d" 'webhook')"
+
+# Extract the line that starts with "> " (user) and the first line that
+# starts with the cyan-wrapped "⏺".
+user_line="$(printf '%s\n' "$preview_d" | grep -m 1 '^> ')"
+if printf '%s' "$user_line" | grep -q $'\033\[01;31m'; then
+  _passed=$((_passed+1)); echo "  ok  preview D: user line has red highlight on 'webhook'"
+else
+  _failed=$((_failed+1)); echo "  FAIL preview D: user line missing red highlight"
+  echo "    line: $(printf '%s' "$user_line" | cat)"
+fi
+
+# Assistant line: whole line wrapped in cyan \033[36m...\033[0m, no red ANSI inside.
+assistant_line="$(printf '%s\n' "$preview_d" | grep -m 1 '⏺')"
+if printf '%s' "$assistant_line" | grep -q $'\033\[01;31m'; then
+  _failed=$((_failed+1)); echo "  FAIL preview D: assistant line has red highlight (should be cyan only)"
+else
+  _passed=$((_passed+1)); echo "  ok  preview D: assistant line has no red highlight"
+fi
+if printf '%s' "$assistant_line" | grep -q $'\033\[36m'; then
+  _passed=$((_passed+1)); echo "  ok  preview D: assistant line is cyan-wrapped"
+else
+  _failed=$((_failed+1)); echo "  FAIL preview D: assistant line missing cyan ANSI"
+fi
+
+# Helper: strip ANSI escape sequences from stdin. Used so downstream awk
+# patterns can anchor on plain-text markers that would otherwise be hidden
+# behind color codes.
+strip_ansi() {
+  sed -E $'s/\E\\[[0-9;]*[a-zA-Z]//g'
+}
+
+# Scroll-to-match scope: a query that matches ONLY an assistant line should
+# anchor at the top (first_line=1), not at the assistant's line.
+# 'signature' is assistant-only in D. After stripping ANSI, the first line
+# after the "────" separator should be the user's "> Debug the webhook ...".
+preview_sig="$(ccsesh_ui_preview "$expected_d" 'signature' | strip_ansi)"
+first_body_line="$(printf '%s\n' "$preview_sig" | awk '/^────/ { body=1; next } body { print; exit }')"
+assert_match "$first_body_line" '^> Debug the webhook' "scroll-to-match ignores assistant-only matches"
+
+echo "== preview header snippet =="
+
+# Session D's opener: "Debug the webhook handler. The validation seems off
+# on some events. I see timeouts too." — 3 sentences. We truncate to 2, so
+# "I see timeouts too." is dropped and "…" is appended.
+preview_d_plain="$(ccsesh_ui_preview "$expected_d" | strip_ansi | awk '/^Session started with:/{flag=1; next} flag {print; exit}')"
+assert_match "$preview_d_plain" 'Debug the webhook handler\. The validation seems off on some events\.' "snippet contains first 2 sentences"
+assert_match "$preview_d_plain" '…$' "snippet ends with ellipsis when truncated"
+if printf '%s' "$preview_d_plain" | grep -q 'I see timeouts too'; then
+  _failed=$((_failed+1)); echo "  FAIL snippet leaks 3rd sentence past 2-sentence cap"
+else
+  _passed=$((_passed+1)); echo "  ok  snippet drops 3rd sentence past 2-sentence cap"
+fi
+
+# Session C's opener is ONE sentence and short — no ellipsis expected.
+preview_c_plain="$(ccsesh_ui_preview "$expected_c" | strip_ansi | awk '/^Session started with:/{flag=1; next} flag {print; exit}')"
+assert_match "$preview_c_plain" 'What happened to this project\?' "short session: full opener shown"
+if printf '%s' "$preview_c_plain" | grep -q '…'; then
+  _failed=$((_failed+1)); echo "  FAIL short session adds ellipsis (shouldn't)"
+else
+  _passed=$((_passed+1)); echo "  ok  short session: no ellipsis added"
 fi
 
 echo
