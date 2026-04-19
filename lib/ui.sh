@@ -29,26 +29,48 @@ _ccsesh_ui_query_to_regex() {
   printf '%s' "$parts"
 }
 
-# Internal: emit ALL user-authored preview lines (no head cap). Used by
+# Internal: emit ALL user + assistant preview lines (no head cap). Used by
 # ccsesh_ui_preview which slices the output based on whether a query is
-# present. Every line is prefixed with "> ".
+# present.
+#   - User lines get a "> " prefix (default color).
+#   - Assistant lines get a "⏺ " prefix, colored cyan for visual distinction.
+# tool_use / tool_result / thinking blocks are dropped — only human-readable
+# text content is shown.
+#
+# Coloring happens AFTER ccsesh_strip_controls (which strips \x1b / ESC). We
+# mark assistant lines with a plain "⏺ " prefix in jq, then awk adds ANSI.
 _ccsesh_ui_preview_render_raw() {
   local f="$1"
   jq -Rr '
     fromjson?
-    | select(.type == "user" and ((.isMeta // false) | not))
+    | select((.type == "user" or .type == "assistant") and ((.isMeta // false) | not))
+    | (if .type == "user" then "> " else "⏺ " end) as $prefix
     | .message.content as $c
     | if ($c | type) == "string" then
-        if ($c | test("^<(command-|local-command-|system-reminder)")) then empty else $c end
+        if ($c | test("^<(command-|local-command-|system-reminder)")) then empty else ($prefix + $c) end
       elif ($c | type) == "array" then
         ( [ $c[]
             | select(.type == "text" and (.text // "") != "")
             | select(.text | test("^<(command-|local-command-|system-reminder)") | not)
-            | .text ] | .[] )
+            | .text ]
+          | .[]
+          | ($prefix + .)
+        )
       else empty end
   ' < "$f" 2>/dev/null \
     | ccsesh_strip_controls \
-    | sed 's/^/> /'
+    | awk '
+      # Track the current role so continuation lines of a multi-line
+      # assistant message stay cyan. A "> " prefix flips us back to user;
+      # a "⏺ " prefix flips to assistant.
+      BEGIN { role = "U" }
+      /^⏺ / { role = "A"; printf "\033[36m%s\033[0m\n", $0; next }
+      /^> / { role = "U"; print; next }
+      {
+        if (role == "A") printf "\033[36m%s\033[0m\n", $0
+        else print
+      }
+    '
 }
 
 # Internal: first 30 preview lines (used when no query is active).
