@@ -130,3 +130,37 @@ ccsesh_session_count() {
     | 1
   ' < "$f" 2>/dev/null | wc -l | tr -d ' '
 }
+
+ccsesh_session_version() {
+  local f="$1"
+  jq -Rr 'fromjson? | .version // empty' < "$f" 2>/dev/null | head -n 1
+}
+
+ccsesh_session_id() {
+  local f="$1"
+  jq -Rr 'fromjson? | .sessionId // empty' < "$f" 2>/dev/null | head -n 1
+}
+
+# Format an epoch as ISO 8601 with numeric offset (e.g. 2026-04-18T19:07:42+0530).
+_ccsesh_epoch_to_iso_offset() {
+  local e="$1"
+  case "$(ccsesh_os)" in
+    darwin) date -r "$e" '+%Y-%m-%dT%H:%M:%S%z' ;;
+    linux)  date -d "@$e" '+%Y-%m-%dT%H:%M:%S%z' ;;
+  esac
+}
+
+# Emit a single TSV row for a session .jsonl.
+ccsesh_session_row() {
+  local f="$1"
+  local sid cwd rec_ts count ver summary ts_iso
+  sid="$(ccsesh_session_id "$f")"
+  [ -n "$sid" ] || return 1
+  cwd="$(ccsesh_session_cwd "$f")" || cwd=""
+  rec_ts="$(ccsesh_session_recency "$f")"
+  ts_iso="$(_ccsesh_epoch_to_iso_offset "$rec_ts")"
+  count="$(ccsesh_session_count "$f")"
+  ver="$(ccsesh_session_version "$f")"
+  summary="$(ccsesh_session_summary "$f" "$sid")"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$sid" "$cwd" "$ts_iso" "$count" "$ver" "$summary"
+}
