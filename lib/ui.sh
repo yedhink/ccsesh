@@ -5,12 +5,9 @@ _UI_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$_UI_DIR/util.sh"
 
-# Print up to 30 human-authored text snippets from a session .jsonl, each on
-# its own line prefixed with "> ". Skips isMeta rows, tool_result, and records
-# that start with <command-/<local-command-/<system-reminder>.
-ccsesh_ui_preview() {
+# Internal render helper for ccsesh_ui_preview.
+_ccsesh_ui_preview_render() {
   local f="$1"
-  [ -r "$f" ] || { printf '(session file not readable)\n'; return 0; }
   jq -Rr '
     fromjson?
     | select(.type == "user" and ((.isMeta // false) | not))
@@ -29,23 +26,46 @@ ccsesh_ui_preview() {
     | sed 's/^/> /'
 }
 
+# Print up to 30 human-authored text snippets from a session .jsonl, each on
+# its own line prefixed with "> ". Skips isMeta rows, tool_result, and records
+# that start with <command-/<local-command-/<system-reminder>.
+# If $2 (query) is non-empty, pipe through grep --color to highlight matches
+# without filtering — uses the "|$" trick so every line passes grep but only
+# matches are colored.
+ccsesh_ui_preview() {
+  local f="$1"
+  local q="${2:-}"
+  [ -r "$f" ] || { printf '(session file not readable)\n'; return 0; }
+  if [ -n "$q" ]; then
+    # Escape regex metacharacters in the query so users searching for "2+2" etc
+    # don't accidentally treat their query as a regex.
+    local q_esc
+    q_esc="$(printf '%s' "$q" | sed -E 's/[][(){}.+*?^$|\\\/]/\\&/g')"
+    _ccsesh_ui_preview_render "$f" | grep --color=always -iE "${q_esc}|$" 2>/dev/null \
+      || _ccsesh_ui_preview_render "$f"
+  else
+    _ccsesh_ui_preview_render "$f"
+  fi
+}
+
 # Build the fzf input: hidden field = absolute .jsonl path, display fields =
 # pretty date + project basename + summary with ANSI colors.
 _ccsesh_ui_build_lines() {
-  local row f sid cwd ts_iso count ver summary date_short proj_base line
-  while IFS=$'\t' read -r sid cwd ts_iso count ver summary; do
+  local sid cwd ts_iso count ver summary extended date_short proj_base
+  while IFS=$'\t' read -r sid cwd ts_iso count ver summary extended; do
     date_short="${ts_iso%%T*}"
     proj_base="$(basename "$cwd" 2>/dev/null)"
     [ -n "$proj_base" ] || proj_base="(unknown)"
-    printf '%s\t%s\t%s\t\033[2m%s\033[0m  \033[36m%s\033[0m  %s\n' \
-      "$sid" "$cwd" "$ts_iso" "$date_short" "$proj_base" "$summary"
+    # Fields: 1=sid 2=cwd 3=ts_iso 4=colored_display 5=extended_search_text
+    printf '%s\t%s\t%s\t\033[2m%s\033[0m  \033[36m%s\033[0m  %s\t%s\n' \
+      "$sid" "$cwd" "$ts_iso" "$date_short" "$proj_base" "$summary" "$extended"
   done
 }
 
 # Launch fzf. Expects filter args same as sessions_list.
 ccsesh_ui_run() {
   local lines
-  lines="$(ccsesh_sessions_list "$@" | _ccsesh_ui_build_lines)"
+  lines="$(_ccsesh_sessions_list_raw "$@" | cut -f 2- | _ccsesh_ui_build_lines)"
   if [ -z "$lines" ]; then
     printf 'ccsesh: no sessions found under %s\n' "$(ccsesh_home)" >&2
     return 0
@@ -60,12 +80,12 @@ ccsesh_ui_run() {
       | fzf \
           --ansi \
           --delimiter=$'\t' \
-          --with-nth=4.. \
+          --with-nth=4 \
           --prompt='ccsesh> ' \
           --header='enter=resume  ctrl-o=print  esc=quit' \
           --expect=ctrl-o \
           --preview-window='right:50%:wrap' \
-          --preview "$CCSESH_DIR/bin/ccsesh __preview {2} {1} 2>/dev/null"
+          --preview "$CCSESH_DIR/bin/ccsesh __preview {2} {1} {q} 2>/dev/null"
   )"
   rc=$?
   # rc=130 -> Esc/no selection
