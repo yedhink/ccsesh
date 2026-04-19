@@ -6,7 +6,9 @@ Fuzzy-search every Claude Code session on your machine and resume the one you pi
 
 ## Why
 
-`claude --resume` only lists sessions for the current directory. `ccsesh` reads the global session store at `~/.claude/projects/` and shows every session across every project, sorted by recency, with a preview pane and resume-on-Enter.
+You jump between projects all day. Claude Code keeps per-project session history, which is great — until you want to get back into a session. `claude --resume` only lists sessions for **the directory you're currently in**. So when you think "what was that debugging conversation last Wednesday?", you first have to remember which project it was in, `cd` there, run `--resume`, then squint at a blurry list of "first few words" to find it. If you guess the wrong project, you get nothing.
+
+`ccsesh` cuts that out. One command, anywhere on your machine, and you see every Claude Code session you've ever had — sorted by recency, searchable by content, with a live preview of the conversation on the right. Narrow by project (`repo:foo`), by recency (`since:7d`), by the name you gave the session (`name:...`), or just type what you remember from the conversation. Hit Enter and you're back in the session, in the right directory, resumed.
 
 ## Install
 
@@ -17,6 +19,91 @@ cd ccsesh
 ```
 
 The installer symlinks `bin/ccsesh` into `~/.local/bin/` so `git pull` will keep you up to date. It will install `jq` and `fzf` via your package manager if they are missing.
+
+<details>
+<summary><b>Prompt for an AI agent to install on your behalf</b></summary>
+
+Paste the block below into your coding assistant (Claude Code, Cursor, Windsurf, Codex, Aider, etc.) and let it run the install end to end.
+
+````text
+Install ccsesh, a CLI that fuzzy-searches and resumes Claude Code sessions
+across every project on this machine. Repo: https://github.com/yedhink/ccsesh
+
+Context: Claude Code's built-in `claude --resume` only lists sessions for
+the current directory. ccsesh reads the global session store at
+~/.claude/projects/ and surfaces every session in one fzf picker.
+
+Execute the steps below in order. Report progress as you go and surface any
+errors verbatim — do not guess around them.
+
+1. Pick an install location.
+   Default to ~/dev/ccsesh. If ~/dev does not exist, prefer a sibling of
+   whatever directory the user usually clones repos into. Ask the user only
+   if neither is obvious.
+
+2. Verify prerequisites.
+   - `claude --version` must succeed. If it does not, tell the user ccsesh
+     is useless without Claude Code and stop; do not attempt to install it.
+   - Note whether `git`, `jq`, and `fzf` are on PATH. Do not install jq/fzf
+     yourself — the installer handles those.
+
+3. Clone the repo.
+   - Run: `git clone https://github.com/yedhink/ccsesh.git <chosen-path>`
+   - If the path already exists as a ccsesh checkout, `git -C <path> pull`
+     instead. If it exists and is not a ccsesh checkout, stop and ask.
+
+4. Run the installer.
+   - `cd <chosen-path>`
+   - `./install.sh`
+   The installer will:
+     * detect the OS (macOS/Linux — aborts on anything else)
+     * install jq and fzf via brew / apt / dnf / pacman if missing
+     * create a symlink ~/.local/bin/ccsesh -> <repo>/bin/ccsesh (idempotent;
+       re-running is safe)
+     * print a PATH-setup line for the user's detected shell if
+       ~/.local/bin is not already on PATH
+   Read and relay the installer's output to the user. If the installer
+   exits non-zero, stop and surface the error — do not retry blindly.
+
+5. Verify the install.
+   - `which ccsesh` → should resolve to ~/.local/bin/ccsesh (or the path
+     the installer reported). If it does not, the user likely needs to
+     apply the PATH-setup line from step 4; point them at the exact line
+     and the exact rc file to edit.
+   - `ccsesh --version` → should print `ccsesh <semver>`.
+   - `ccsesh --list | head -3` → should print up to 3 tab-separated rows.
+     Zero rows is fine and means either no sessions exist yet or
+     ~/.claude/projects/ is empty; note this rather than treat it as an
+     error.
+
+6. Report back. Include:
+   - install location
+   - output of `which ccsesh` and `ccsesh --version`
+   - count of sessions ccsesh can see (`ccsesh --list | wc -l`)
+   - any manual PATH step the user still needs to apply
+
+Rules:
+- Do NOT edit the user's shell rc file automatically. Print the exact line
+  the installer suggested and tell the user which file to add it to.
+- Do NOT use sudo. The installer deliberately runs unprivileged; if
+  something appears to need root, stop and ask.
+- Do NOT switch branches, pick a fork, or pin a tag. Use the default branch
+  of yedhink/ccsesh.
+- Do NOT proceed past a failing step. Surface the exact error and ask.
+
+Troubleshooting cheatsheet:
+- `command not found: brew` on macOS → direct the user to https://brew.sh
+  and stop; the installer cannot complete without it.
+- `permission denied` creating the symlink → ensure `~/.local/bin` exists
+  and is user-writable; do not sudo.
+- `ccsesh: missing jq` or `missing fzf` at runtime → re-run ./install.sh;
+  the user may have declined the package install earlier.
+- `No conversation found with session ID` after resume → ccsesh cds into
+  the original project dir before running `claude --resume`; if that dir
+  was deleted, ccsesh prints a clear error without launching claude.
+````
+
+</details>
 
 ## Usage
 
