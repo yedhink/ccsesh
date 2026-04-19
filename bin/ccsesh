@@ -50,14 +50,14 @@ ccsesh_main() {
   while [ $# -gt 0 ]; do
     case "$1" in
       __preview)
-        # Hidden: called by fzf preview. Args: __preview <cwd> <sid>
+        # Hidden: called by fzf preview. Args: __preview <cwd> <sid> [<query>]
         shift
-        local _cwd="$1" _sid="$2"
+        local _cwd="$1" _sid="$2" _q="${3:-}"
         local home; home="$(ccsesh_home)"
         local f
         for f in "$home/projects"/*/"$_sid".jsonl; do
           [ -f "$f" ] || continue
-          ccsesh_ui_preview "$f"
+          ccsesh_ui_preview "$f" "$_q"
           exit 0
         done
         printf '(session file not found)\n'
