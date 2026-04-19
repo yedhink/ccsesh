@@ -453,3 +453,26 @@ _ccsesh_config_enter_cmd() {
   [ -r "$cfg" ] || return 0
   jq -r '(.enter.command // "")' "$cfg" 2>/dev/null
 }
+
+# Expand {sid}/{cwd} placeholders in the enter-command template, shell-
+# escaping both values via printf %q. Prints the expanded shell command
+# ready for `sh -c`, or empty if no template is configured.
+#
+# Args:
+#   $1 sid  — session id (UUID)
+#   $2 cwd  — session's original project directory
+#
+# Placeholders are substituted verbatim; users should NOT wrap them in
+# shell quotes (the auto-escape is already done).
+_ccsesh_ui_enter_expand() {
+  local sid="$1" cwd="$2"
+  local tmpl; tmpl="$(_ccsesh_config_enter_cmd)"
+  [ -n "$tmpl" ] || return 0
+  local sid_q cwd_q
+  sid_q="$(printf '%q' "$sid")"
+  cwd_q="$(printf '%q' "$cwd")"
+  local out="$tmpl"
+  out="${out//\{sid\}/$sid_q}"
+  out="${out//\{cwd\}/$cwd_q}"
+  printf '%s' "$out"
+}
