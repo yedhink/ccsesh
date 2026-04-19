@@ -137,6 +137,18 @@ Keybindings inside the picker:
 
 The preview pane on the right shows a labeled header block (`Name`, `ID`, `Repo`, `Path`, `Last`, and a 2-sentence "Session started with:" snippet) followed by the conversation body. User messages appear with a plain `> ` prefix; Claude's replies are prefixed with a cyan `⏺ ` and the whole reply is tinted cyan, so you can scan who said what at a glance. When your query matches something, the body scrolls to the first matching user line and highlights matches — only on user lines, mirroring the filter scope.
 
+### Custom Enter action
+
+By default, Enter runs `cd <cwd> && claude --resume <sid>` in the current tab. If you'd rather open a new tab, split a tmux window, or delegate to your own script, drop a file at `~/.config/ccsesh/config.json` with an `enter.command` template:
+
+```json
+{ "enter": { "command": "wezterm cli spawn --cwd {cwd} -- claude --resume {sid}" } }
+```
+
+Placeholders `{sid}` and `{cwd}` are substituted into the command, both shell-escaped — do not wrap them in quotes yourself. The config file is strict JSON (no comments, no trailing commas).
+
+The installer ships `~/.config/ccsesh/config.example.jsonc` with ready-made recipes for WezTerm, iTerm2, Ghostty 1.3+, tmux, and a delegate-to-script pattern. Copy any one block into `config.json` and strip the `// ` comments.
+
 ## Search syntax
 
 The fzf query box supports two kinds of input combined freely: **filter tokens** and **free text**. Filters narrow the list; free-text terms then substring-match (case-insensitive) against the visible field of whatever survived the filters.
