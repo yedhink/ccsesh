@@ -6,7 +6,7 @@ Fuzzy-search every Claude Code session on your machine and resume the one you pi
 
 ## Why
 
-Watch the [DEMO HERE](https://yedhin.neetorecord.com/watch/c643db127ce65d6a0697).
+Watch the <a href="https://yedhin.neetorecord.com/watch/c643db127ce65d6a0697" target="_blank" rel="noopener noreferrer">DEMO HERE</a>.
 
 You jump between projects all day. Claude Code keeps per-project session history, which is great — until you want to get back into a session. `claude --resume` only lists sessions for **the directory you're currently in**. So when you think "what was that debugging conversation last Wednesday?", you first have to remember which project it was in, `cd` there, run `--resume`, then squint at a blurry list of "first few words" to find it. If you guess the wrong project, you get nothing.
 
