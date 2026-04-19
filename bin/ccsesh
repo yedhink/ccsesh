@@ -73,6 +73,54 @@ ccsesh_main() {
         printf '(session file not found)\n'
         exit 0
         ;;
+      __help)
+        # Hidden: rendered by fzf's Ctrl-G / Ctrl-/ bind as a transient help
+        # overlay in the preview pane. Any keystroke in the query field fires
+        # `change` which re-runs __preview, so help auto-dismisses on typing.
+        cat <<'HELP'
+
+[1;36m┌──────────────  ccsesh cheat sheet  ──────────────┐[0m
+
+[1;33mKEYBINDINGS[0m
+  [36mEnter[0m        Resume selected session (cd + claude --resume)
+  [36mCtrl-O[0m       Print sessionId and cwd, then exit (scripting)
+  [36mCtrl-G[0m[2m / [0m[36mCtrl-/[0m   Show this help (dismiss by typing)
+  [36mEsc[0m          Quit
+
+[1;33mFILTER TOKENS[0m
+  [32mrepo:X[0m       project dir basename contains X (case-insensitive)
+  [32msince:Nd[0m     recent N days (also [32mNh[0m, [32mNm[0m)
+  [32mname:X[0m       custom title contains X (sessions without a title are excluded)
+
+[1;33mFREE-TEXT OPERATORS[0m  [2m(fzf, always case-insensitive)[0m
+  [35mfoo bar[0m      AND — both must match
+  [35m'foo[0m         exact substring match for foo
+  [35m^foo[0m         foo at start of line
+  [35mfoo$[0m         foo at end of line
+  [35m!foo[0m         must NOT contain foo
+
+[1;33mEXAMPLES[0m
+  [2m#[0m find sessions mentioning transcript, narrowed to one repo
+  transcript repo:claude-skills
+
+  [2m#[0m recent sessions, excluding anything about bugwatch
+  since:7d !bugwatch
+
+  [2m#[0m only sessions I renamed with "bugwatch" in the title
+  name:bugwatch
+
+[1;33mPREVIEW SCROLLING[0m
+  When your query matches something, the body below the header
+  opens at the first matching line. Otherwise it shows the top.
+  Filter tokens ([2mrepo:[0m, [2msince:[0m, [2mname:[0m) are stripped before
+  highlighting — they don't pollute match colors.
+
+[2m───────────────────────────────────────────────────[0m
+[2mStart typing to dismiss this help and return to preview.[0m
+
+HELP
+        exit 0
+        ;;
       __fzf_feed)
         # Hidden: called by fzf's change:reload bind. Args: __fzf_feed [<query>]
         # Reads from $CCSESH_UI_CACHE (set by ccsesh_ui_run), parses the query
