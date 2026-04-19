@@ -149,6 +149,8 @@ Placeholders `{sid}` and `{cwd}` are substituted into the command, both shell-es
 
 The installer ships `~/.config/ccsesh/config.example.jsonc` with ready-made recipes for WezTerm, iTerm2, Ghostty 1.3+, tmux, and a delegate-to-script pattern. Copy any one block into `config.json` and strip the `// ` comments.
 
+For recipes that need a helper script (e.g. Ghostty, which execs through a stripped-down login shell where `claude` may not be on `PATH`), see the [`examples/`](./examples) directory — each helper takes `{sid}` and `{cwd}` as positional args and can be dropped into `~/.local/bin/` directly.
+
 ## Search syntax
 
 The fzf query box supports two kinds of input combined freely: **filter tokens** and **free text**. Filters narrow the list; free-text terms then substring-match (case-insensitive) against the visible field of whatever survived the filters.

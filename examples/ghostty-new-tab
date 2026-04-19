@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# ccsesh Enter-action helper: open the resumed session in a new Ghostty tab.
+#
+# Requires Ghostty 1.3+ (native AppleScript support, shipped late 2025).
+#
+# Usage: ghostty-new-tab <sessionId> <cwd>
+#
+# Install:
+#   cp examples/ghostty-new-tab ~/.local/bin/
+#   chmod +x ~/.local/bin/ghostty-new-tab
+#
+# Wire up via ~/.config/ccsesh/config.json:
+#   { "enter": { "command": "~/.local/bin/ghostty-new-tab {sid} {cwd}" } }
+#
+# The first time ccsesh triggers this script, macOS will prompt for
+# Automation permission to control Ghostty — approve once, subsequent runs
+# are silent.
+set -u
+
+sid="${1:-}"
+cwd="${2:-}"
+
+if [ -z "$sid" ] || [ -z "$cwd" ]; then
+  echo "ghostty-new-tab: missing sid or cwd argument" >&2
+  exit 2
+fi
+
+if [ ! -d "$cwd" ]; then
+  echo "ghostty-new-tab: cwd not a directory: $cwd" >&2
+  exit 1
+fi
+
+# Ghostty execs the configured `command` via
+#   /usr/bin/login -q -flp <user> /bin/bash --noprofile --norc -c 'exec -l <cmd>'
+# which means no shell rc files load and PATH is whatever /usr/bin/login
+# hands back — typically just /usr/bin:/bin:/usr/sbin:/sbin. Anything
+# installed via Homebrew/asdf/nvm is NOT on that PATH. Resolve the absolute
+# path to `claude` HERE (where our own PATH is intact) and hand that to
+# AppleScript so Ghostty can exec it directly.
+claude_bin="$(command -v claude)"
+if [ -z "$claude_bin" ]; then
+  echo "ghostty-new-tab: claude not on PATH" >&2
+  exit 127
+fi
+
+# Ghostty's `new surface configuration` AppleScript record fields:
+#   initial working directory — equivalent to `cd` before exec
+#   command                   — argv to exec (not shell-parsed)
+# Paths are wrapped in AppleScript string literals. Real-world session
+# cwds and claude paths don't contain embedded double quotes, so basic
+# "..." quoting is safe.
+osascript <<APPLESCRIPT
+tell application "Ghostty"
+  activate
+  set cfg to new surface configuration
+  set initial working directory of cfg to "$cwd"
+  set command of cfg to "$claude_bin --resume $sid"
+  set t to new tab in front window with configuration cfg
+end tell
+APPLESCRIPT

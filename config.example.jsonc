@@ -11,15 +11,24 @@
 //
 // When no config.json exists (or .enter.command is empty), Enter runs the
 // default: cd into {cwd} and `claude --resume {sid}` in the current tab.
+//
+// Note on GUI terminals (Ghostty, iTerm2, etc.): their AppleScript /
+// "new tab with command" APIs exec the configured command via a stripped
+// login shell (no rc files, minimal PATH). Homebrew/nvm/asdf installs of
+// `claude` typically are NOT on that minimal PATH. The cleanest fix is to
+// delegate to a tiny wrapper script that resolves `claude`'s absolute path
+// in a normal shell before invoking the AppleScript. See the `examples/`
+// directory in the ccsesh repo for ready-made wrappers.
 
 // ── WezTerm: resume in a new tab ──────────────────────────────────────
 // { "enter": { "command": "wezterm cli spawn --cwd {cwd} -- claude --resume {sid}" } }
 
-// ── iTerm2: resume in a new tab via AppleScript ───────────────────────
+// ── iTerm2: resume in a new tab via AppleScript (PATH-sensitive) ──────
 // { "enter": { "command": "osascript -e 'tell application \"iTerm\" to tell current window to create tab with default profile command \"cd {cwd} && claude --resume {sid}\"'" } }
 
-// ── Ghostty 1.3+: resume in a new tab via AppleScript ─────────────────
-// { "enter": { "command": "osascript -e 'tell application \"Ghostty\"' -e 'set cfg to new surface configuration' -e 'set command of cfg to \"claude --resume {sid}\"' -e 'set t to new tab in front window with configuration cfg' -e 'end tell'" } }
+// ── Ghostty 1.3+: resume in a new tab ─────────────────────────────────
+// Ready-made wrapper in examples/ghostty-new-tab handles the PATH issue.
+// { "enter": { "command": "~/.local/bin/ghostty-new-tab {sid} {cwd}" } }
 
 // ── tmux: resume in a new window ──────────────────────────────────────
 // { "enter": { "command": "tmux new-window -c {cwd} -- claude --resume {sid}" } }
