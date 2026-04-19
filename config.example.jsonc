@@ -1,0 +1,28 @@
+// ccsesh config — examples for the Enter action.
+//
+// ccsesh reads STRICT JSON from ~/.config/ccsesh/config.json (or wherever
+// $XDG_CONFIG_HOME points). To try an example below, copy it into
+// config.json and remove the leading "// " comments. JSON itself does not
+// support comments — this .example.jsonc file uses them for readability.
+//
+// Placeholders in "enter.command":
+//   {sid}  — session id (auto shell-escaped)
+//   {cwd}  — original project directory (auto shell-escaped)
+//
+// When no config.json exists (or .enter.command is empty), Enter runs the
+// default: cd into {cwd} and `claude --resume {sid}` in the current tab.
+
+// ── WezTerm: resume in a new tab ──────────────────────────────────────
+// { "enter": { "command": "wezterm cli spawn --cwd {cwd} -- claude --resume {sid}" } }
+
+// ── iTerm2: resume in a new tab via AppleScript ───────────────────────
+// { "enter": { "command": "osascript -e 'tell application \"iTerm\" to tell current window to create tab with default profile command \"cd {cwd} && claude --resume {sid}\"'" } }
+
+// ── Ghostty 1.3+: resume in a new tab via AppleScript ─────────────────
+// { "enter": { "command": "osascript -e 'tell application \"Ghostty\"' -e 'set cfg to new surface configuration' -e 'set command of cfg to \"claude --resume {sid}\"' -e 'set t to new tab in front window with configuration cfg' -e 'end tell'" } }
+
+// ── tmux: resume in a new window ──────────────────────────────────────
+// { "enter": { "command": "tmux new-window -c {cwd} -- claude --resume {sid}" } }
+
+// ── Delegate to your own script ───────────────────────────────────────
+// { "enter": { "command": "~/bin/ccsesh-enter {sid} {cwd}" } }
