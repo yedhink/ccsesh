@@ -56,8 +56,16 @@ _ccsesh_ui_build_lines() {
     date_short="${ts_iso%%T*}"
     proj_base="$(basename "$cwd" 2>/dev/null)"
     [ -n "$proj_base" ] || proj_base="(unknown)"
-    # Fields: 1=sid 2=cwd 3=ts_iso 4=colored_display 5=extended_search_text
-    printf '%s\t%s\t%s\t\033[2m%s\033[0m  \033[36m%s\033[0m  %s\t%s\n' \
+    # Fzf fields (tab-delimited):
+    #   1 = sid  (hidden from both display and search via --with-nth=4)
+    #   2 = cwd  (hidden)
+    #   3 = ts_iso (hidden)
+    #   4 = colored display + dimmed extended text, both visible AND searchable.
+    #
+    # Extended text is embedded at the end of field 4 (dimmed via \033[2;90m)
+    # so fzf's --with-nth=4 covers it for search. The dim styling de-emphasizes
+    # it visually; it scrolls off the right with --no-hscroll.
+    printf '%s\t%s\t%s\t\033[2m%s\033[0m  \033[36m%s\033[0m  %s  \033[2;90m%s\033[0m\n' \
       "$sid" "$cwd" "$ts_iso" "$date_short" "$proj_base" "$summary" "$extended"
   done
 }
@@ -70,21 +78,28 @@ ccsesh_ui_run() {
     printf 'ccsesh: no sessions found under %s\n' "$(ccsesh_home)" >&2
     return 0
   fi
-  # fzf fields: 1=sid, 2=cwd, 3=ts_iso, 4..=display.
-  # --with-nth=4.. hides 1..3 from both display and search — so the user
-  # searches only on the display text (good; sid/cwd are noise).
-  # --ansi interprets the color codes in the display.
+  # fzf fields: 1=sid, 2=cwd, 3=ts_iso (all hidden from search and display),
+  # 4 = colored visible display + dimmed extended text (searchable).
+  # --with-nth=4 scopes BOTH display and search to field 4 — in fzf this is
+  # one knob, not two. We include extended text in field 4 (dimmed) so it is
+  # part of the search corpus while visually de-emphasized.
+  # -i forces case-insensitive matching (smart-case was surprising users who
+  # typed e.g. "Transcript" expecting a case-blind match).
+  # --no-hscroll keeps the visible line pinned to the left; long dimmed tails
+  # clip off the right edge.
   local selection rc
   selection="$(
     printf '%s\n' "$lines" \
       | fzf \
+          -i \
           --ansi \
+          --no-hscroll \
           --delimiter=$'\t' \
           --with-nth=4 \
           --prompt='ccsesh> ' \
           --header='enter=resume  ctrl-o=print  esc=quit' \
           --expect=ctrl-o \
-          --preview-window='right:50%:wrap' \
+          --preview-window='right,50%,wrap' \
           --preview "$CCSESH_DIR/bin/ccsesh __preview {2} {1} {q} 2>/dev/null"
   )"
   rc=$?
