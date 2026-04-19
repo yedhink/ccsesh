@@ -28,3 +28,14 @@ ccsesh_sessions_discover() {
     done
   done
 }
+
+# Print the .cwd field of the first parseable record in a session .jsonl.
+# Silent (empty stdout, non-zero return) if no record has a .cwd.
+ccsesh_session_cwd() {
+  local f="$1"
+  [ -r "$f" ] || return 1
+  local out
+  out="$(jq -Rr 'fromjson? | .cwd // empty' < "$f" 2>/dev/null | head -n 1)"
+  [ -n "$out" ] || return 1
+  printf '%s\n' "$out"
+}
