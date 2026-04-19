@@ -150,6 +150,66 @@ _ccsesh_epoch_to_iso_offset() {
   esac
 }
 
+# Parse --since spec (Nd|Nh|Nm). Prints delta seconds on stdout, returns
+# non-zero (and emits error to stderr) on invalid input.
+_ccsesh_since_to_seconds() {
+  local spec="$1"
+  if ! printf '%s' "$spec" | grep -Eq '^[0-9]+[dhm]$'; then
+    printf 'ccsesh: invalid --since %q (expected Nd, Nh, or Nm)\n' "$spec" >&2
+    return 2
+  fi
+  local n unit
+  n="${spec%[dhm]}"
+  unit="${spec: -1}"
+  case "$unit" in
+    d) printf '%s\n' "$((n * 86400))" ;;
+    h) printf '%s\n' "$((n * 3600))" ;;
+    m) printf '%s\n' "$((n * 60))" ;;
+  esac
+}
+
+# Normalize a path for --project comparison: use $PWD-style canonicalization
+# when the dir exists, else keep the raw input.
+_ccsesh_normalize_path() {
+  local p="$1"
+  if [ -d "$p" ]; then ( cd -P -- "$p" && pwd -P )
+  else printf '%s\n' "$p"; fi
+}
+
+# Public list.
+ccsesh_sessions_list() {
+  local project="" since_sec=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --project)
+        [ $# -ge 2 ] || { echo "ccsesh: --project requires a value" >&2; return 2; }
+        project="$(_ccsesh_normalize_path "$2")"; shift 2 ;;
+      --since)
+        [ $# -ge 2 ] || { echo "ccsesh: --since requires a value" >&2; return 2; }
+        since_sec="$(_ccsesh_since_to_seconds "$2")" || return 2
+        shift 2 ;;
+      *) printf 'ccsesh: unknown list arg %q\n' "$1" >&2; return 2 ;;
+    esac
+  done
+  local cutoff=""
+  [ -n "$since_sec" ] && cutoff="$(( $(date +%s) - since_sec ))"
+
+  local f sid cwd rec_ts row
+  while IFS= read -r f; do
+    sid="$(ccsesh_session_id "$f")"
+    [ -n "$sid" ] || continue
+    cwd="$(ccsesh_session_cwd "$f")" || cwd=""
+    if [ -n "$project" ] && [ "$cwd" != "$project" ]; then continue; fi
+    rec_ts="$(ccsesh_session_recency "$f")"
+    if [ -n "$cutoff" ] && [ "$rec_ts" -lt "$cutoff" ]; then continue; fi
+    # Prefix with epoch for sort, strip after.
+    row="$(ccsesh_session_row "$f")"
+    printf '%s\t%s\n' "$rec_ts" "$row"
+  done < <(ccsesh_sessions_discover) \
+    | sort -t $'\t' -k1,1rn \
+    | cut -f2-
+}
+
 # Emit a single TSV row for a session .jsonl.
 ccsesh_session_row() {
   local f="$1"
