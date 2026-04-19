@@ -65,6 +65,25 @@ ccsesh_main() {
         printf '(session file not found)\n'
         exit 0
         ;;
+      __fire-enter)
+        # Hidden: called by fzf's Enter bind in stay-mode (activated when
+        # the user has configured .enter.command in config.json).
+        # Args: __fire-enter <cwd> <sid>
+        # Runs the expanded command via `sh -c` — NOT exec — so fzf can
+        # regain control afterwards and the user can fire more actions.
+        shift
+        local _cwd="$1" _sid="$2"
+        if [ ! -d "$_cwd" ]; then
+          printf 'ccsesh: original project dir %q no longer exists; skipping.\n' "$_cwd" >&2
+          exit 1
+        fi
+        local _cmd
+        _cmd="$(_ccsesh_ui_enter_expand "$_sid" "$_cwd")"
+        [ -n "$_cmd" ] || exit 0
+        _ccsesh_debug "ui: fire-enter → $_cmd"
+        sh -c "$_cmd"
+        exit $?
+        ;;
       __fzf_feed)
         # Hidden: called by fzf's change:reload bind. Args: __fzf_feed [<query>]
         # Reads from $CCSESH_UI_CACHE (set by ccsesh_ui_run), parses the query

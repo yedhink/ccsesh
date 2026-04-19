@@ -147,6 +147,8 @@ By default, Enter runs `cd <cwd> && claude --resume <sid>` in the current tab. I
 
 Placeholders `{sid}` and `{cwd}` are substituted into the command, both shell-escaped — do not wrap them in quotes yourself. The config file is strict JSON (no comments, no trailing commas).
 
+**Stay-in-picker behavior.** When a custom `enter.command` is configured, Enter fires the action and **leaves you in the picker** so you can line up more sessions (e.g. open three Ghostty tabs in a row). Press `Esc` to quit ccsesh. Without a custom command, Enter keeps its classic behavior: replace the terminal with `claude --resume` and exit.
+
 The installer ships `~/.config/ccsesh/config.example.jsonc` with ready-made recipes for WezTerm, iTerm2, Ghostty 1.3+, tmux, and a delegate-to-script pattern. Copy any one block into `config.json` and strip the `// ` comments.
 
 For recipes that need a helper script (e.g. Ghostty, which execs through a stripped-down login shell where `claude` may not be on `PATH`), see the [`examples/`](./examples) directory — each helper takes `{sid}` and `{cwd}` as positional args and can be dropped into `~/.local/bin/` directly.

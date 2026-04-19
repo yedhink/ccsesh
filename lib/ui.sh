@@ -294,6 +294,19 @@ ccsesh_ui_run() {
 
   export CCSESH_UI_CACHE="$cache"
 
+  # Option A "stay mode": when the user has configured a custom enter.command,
+  # rebind Enter from fzf's default `accept` (which would exit ccsesh) to
+  # `execute` (which runs the command and returns control to fzf). Result:
+  # Enter fires the custom action and leaves ccsesh open for the next pick.
+  # Without a custom command, Enter keeps its default accept+exit → the post-
+  # fzf block below handles the default `cd && exec claude --resume` flow.
+  local -a enter_bind=()
+  local header_enter_help='enter=resume'
+  if [ -n "$(_ccsesh_config_enter_cmd)" ]; then
+    enter_bind=(--bind "enter:execute($CCSESH_DIR/bin/ccsesh __fire-enter {2} {1})")
+    header_enter_help='enter=run (stays in ccsesh)'
+  fi
+
   # fzf fields: 1=sid, 2=cwd, 3=ts_iso (hidden), 4=colored display + dimmed
   # extended text (visible + searchable), 5=epoch (hidden, used by __fzf_feed).
   #
@@ -311,11 +324,12 @@ ccsesh_ui_run() {
       --delimiter=$'\t' \
       --with-nth=4 \
       --prompt='ccsesh> ' \
-      --header='enter=resume  ctrl-o=print  esc=quit
+      --header="$header_enter_help  ctrl-o=print  esc=quit
 filters: repo:X  since:Nd|Nh|Nm  name:X
-operators: foo bar (AND)  ^foo (prefix)  foo$ (suffix)  !foo (negate)  '\''foo (fuzzy)' \
+operators: foo bar (AND)  ^foo (prefix)  foo\$ (suffix)  !foo (negate)  'foo (fuzzy)" \
       --bind "start:reload($CCSESH_DIR/bin/ccsesh __fzf_feed {q})" \
       --bind "change:reload($CCSESH_DIR/bin/ccsesh __fzf_feed {q})" \
+      ${enter_bind[@]:+"${enter_bind[@]}"} \
       --expect=ctrl-o \
       --preview-window='right,50%,wrap' \
       --preview "$CCSESH_DIR/bin/ccsesh __preview {2} {1} {q} 2>/dev/null" \
@@ -426,20 +440,14 @@ operators: foo bar (AND)  ^foo (prefix)  foo$ (suffix)  !foo (negate)  '\''foo (
       unset -f _print_line
       return 0 ;;
     *)
+      # Default Enter (reached only when no custom enter.command is
+      # configured — when one is, fzf's `execute` bind fires __fire-enter
+      # directly and never surfaces a selection here).
       if [ ! -d "$cwd" ]; then
         printf 'ccsesh: original project dir %q no longer exists; cannot resume.\n' "$cwd" >&2
         printf 'ccsesh: session transcript remains on disk.\n' >&2
         return 1
       fi
-      # Custom Enter: if the user has configured .enter.command in
-      # config.json, exec that instead. {sid}/{cwd} are shell-escaped.
-      local custom
-      custom="$(_ccsesh_ui_enter_expand "$sid" "$cwd")"
-      if [ -n "$custom" ]; then
-        _ccsesh_debug "ui: enter via config → $custom"
-        exec sh -c "$custom"
-      fi
-      # Default Enter: cd into the session's cwd and resume claude.
       command -v claude >/dev/null 2>&1 || { echo "ccsesh: claude not on PATH" >&2; return 127; }
       cd -- "$cwd" && exec claude --resume "$sid"
       ;;

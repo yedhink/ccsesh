@@ -506,6 +506,34 @@ assert_eq "$got" "echo hello" "expander: passes through literal command"
 unset CCSESH_CONFIG
 rm -rf "$enter_tpl_dir"
 
+echo "== custom enter: fire subcommand =="
+
+# __fire-enter is the hidden subcommand bound to fzf's Enter action in
+# stay-mode. It reads config, expands the template, and runs via `sh -c`
+# (not exec — fzf needs control back).
+fire_dir="/tmp/ccsesh-fire-$$"
+rm -rf "$fire_dir"
+mkdir -p "$fire_dir"
+
+# Config echoes both placeholders so we can inspect the output.
+cat > "$fire_dir/config.json" <<'JSON'
+{ "enter": { "command": "echo FIRE-OK sid={sid} cwd={cwd}" } }
+JSON
+got="$(CCSESH_CONFIG="$fire_dir/config.json" "$REPO_DIR/bin/ccsesh" __fire-enter "$fire_dir" "sid-xyz")"
+assert_eq "$got" "FIRE-OK sid=sid-xyz cwd=$fire_dir" "__fire-enter expands placeholders and runs"
+
+# Missing cwd → exit 1 with a clear stderr message, no stdout.
+rc=0
+err="$(CCSESH_CONFIG="$fire_dir/config.json" "$REPO_DIR/bin/ccsesh" __fire-enter "/nonexistent/path-$$" "sid-xyz" 2>&1 >/dev/null)" || rc=$?
+assert_eq "$rc" "1" "__fire-enter rejects deleted project dir"
+assert_match "$err" 'no longer exists' "__fire-enter emits clear error on missing cwd"
+
+# No custom command configured → exit 0, no output (nothing to fire).
+got="$(CCSESH_CONFIG="$fire_dir/nonexistent.json" "$REPO_DIR/bin/ccsesh" __fire-enter "$fire_dir" "sid-xyz")"
+assert_eq "$got" "" "__fire-enter is a no-op when no custom command configured"
+
+rm -rf "$fire_dir"
+
 echo
 echo "passed: $_passed  failed: $_failed"
 [ "$_failed" -eq 0 ]
