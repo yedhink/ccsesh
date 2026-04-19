@@ -30,12 +30,18 @@ Options:
   --list              Print all sessions as TSV and exit (scripting).
   --project <path>    Restrict to sessions whose original cwd matches <path>.
   --since <spec>      Only sessions with recency newer than <spec> (Nd, Nh, Nm).
+  --dont-cd           When invoked via the shell wrapper, do not leave the
+                      parent shell in the session's project dir after resume
+                      (runs cd+claude in a subshell). Default: persist cd.
   -h, --help          Show this help.
   -v, --version       Print version.
   --debug             Write timing + phase info to /tmp/ccsesh-debug.log.
 
 Environment:
   CCSESH_CLAUDE_HOME  Override the Claude home dir (default: \$HOME/.claude).
+  CCSESH_SHELL_MODE   Set to 1 by the shell wrapper. When set, Enter prints
+                      the cd+claude command to stdout for the parent to eval
+                      rather than exec'ing in place. See shell/ccsesh.bash.
 EOF
 }
 
@@ -150,6 +156,7 @@ ccsesh_main() {
       -h|--help) usage; exit 0 ;;
       -v|--version) printf 'ccsesh %s\n' "$CCSESH_VERSION"; exit 0 ;;
       --debug) CCSESH_DEBUG=1; export CCSESH_DEBUG; shift ;;
+      --dont-cd) CCSESH_DONT_CD=1; export CCSESH_DONT_CD; shift ;;
       --) shift; break ;;
       -*) printf 'ccsesh: unknown flag %q (see --help)\n' "$1" >&2; exit 2 ;;
       *) printf 'ccsesh: unexpected argument %q (see --help)\n' "$1" >&2; exit 2 ;;
