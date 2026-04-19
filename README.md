@@ -27,13 +27,26 @@ Context: Claude Code's built-in `claude --resume` only lists sessions for
 the current directory. ccsesh reads the global session store at
 ~/.claude/projects/ and surfaces every session in one fzf picker.
 
-Execute the steps below in order. Surface errors verbatim. Step 6 ASKS
-the user a question — you MUST ask it and wait, do not pick for them.
+Execute the steps below in order. Surface errors verbatim. Steps 1 and 6
+ASK the user questions — you MUST ask them and wait, do not pick on
+their behalf.
 
-1. Pick an install location.
-   Default to ~/dev/ccsesh. If ~/dev does not exist, prefer a sibling of
-   whatever directory the user usually clones repos into. Ask only if
-   neither is obvious.
+1. Ask the user where to clone the ccsesh repo.
+   This location is PERSISTENT — future `git pull` runs there to fetch
+   updates, and the installer creates a symlink
+   ~/.local/bin/ccsesh -> <clone-path>/bin/ccsesh that points into it.
+   Ask this question verbatim and WAIT for the user's answer:
+
+   > "Where should I clone the ccsesh repo?
+   >   (a) Home directory: ~/ccsesh
+   >   (b) /tmp/ccsesh  (throwaway — /tmp is typically wiped on reboot,
+   >       so pick this only if you're just trying ccsesh out; future
+   >       `git pull` updates will break after the tmp directory is
+   >       cleared)
+   >   (c) Somewhere else (tell me the path)"
+
+   Do NOT guess a location like ~/dev/ccsesh without asking. If the user
+   picks (c), confirm the expanded path back to them before cloning.
 
 2. Verify prerequisites.
    - `claude --version` must succeed. If it does not, ccsesh is useless
@@ -152,7 +165,8 @@ Rules:
 - Do NOT use sudo. The installer avoids it by design.
 - Do NOT switch branches, pick a fork, or pin a tag. Use the default
   branch of yedhink/ccsesh.
-- Do NOT skip step 6's question or pick an option on the user's behalf.
+- Do NOT skip step 1's or step 6's question. Both require the user's
+  answer; do not pick on their behalf or assume a default location.
 - Do NOT proceed past a failing step. Surface the error and ask.
 
 Troubleshooting cheatsheet:
