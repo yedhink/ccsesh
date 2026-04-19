@@ -114,6 +114,17 @@ assert_eq "${got[0]}" "$expected_a" "discover[0] is session A"
 assert_eq "${got[1]}" "$expected_b" "discover[1] is session B"
 assert_eq "${got[2]}" "$expected_c" "discover[2] is session C"
 
+echo "== sessions.sh cwd =="
+
+got="$(ccsesh_session_cwd "$expected_a")"
+assert_eq "$got" "/Users/ikigai/dev/neeto-products" "cwd for session A preserves embedded hyphen"
+
+got="$(ccsesh_session_cwd "$expected_b")"
+assert_eq "$got" "/Users/ikigai/dev/neeto-products" "cwd for session B resolves despite trailing truncation"
+
+got="$(ccsesh_session_cwd "$expected_c")"
+assert_eq "$got" "/tmp/definitely-does-not-exist-xyz" "cwd for session C preserves path even if dir gone"
+
 echo
 echo "passed: $_passed  failed: $_failed"
 [ "$_failed" -eq 0 ]
