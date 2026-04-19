@@ -206,6 +206,22 @@ rows="$(ccsesh_sessions_list --since 1h 2>/dev/null || true)"
 rc=0; ccsesh_sessions_list --since bogus >/dev/null 2>&1 || rc=$?
 assert_eq "$rc" "2" "list --since bogus exits 2"
 
+echo "== bin/ccsesh arg parsing =="
+
+out="$("$REPO_DIR/bin/ccsesh" --version)"
+assert_match "$out" '^ccsesh [0-9]+\.[0-9]+\.[0-9]+$' "--version prints semver"
+
+out="$("$REPO_DIR/bin/ccsesh" --help)"
+assert_match "$out" 'Usage:' "--help mentions Usage"
+assert_match "$out" '\-\-list' "--help documents --list"
+
+out="$(CCSESH_CLAUDE_HOME="$fixture_root" "$REPO_DIR/bin/ccsesh" --list)"
+line_count="$(printf '%s\n' "$out" | grep -c '')"
+assert_eq "$line_count" "3" "--list against fixture: 3 rows"
+
+rc=0; "$REPO_DIR/bin/ccsesh" --bogus >/dev/null 2>&1 || rc=$?
+assert_eq "$rc" "2" "unknown flag exits 2"
+
 echo
 echo "passed: $_passed  failed: $_failed"
 [ "$_failed" -eq 0 ]
