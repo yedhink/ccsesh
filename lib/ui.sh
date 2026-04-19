@@ -29,16 +29,11 @@ _ccsesh_ui_query_to_regex() {
   printf '%s' "$parts"
 }
 
-# Internal: emit ALL user + assistant preview lines (no head cap). Used by
-# ccsesh_ui_preview which slices the output based on whether a query is
-# present.
-#   - User lines get a "> " prefix (default color).
-#   - Assistant lines get a "⏺ " prefix, colored cyan for visual distinction.
+# Internal: emit ALL user + assistant preview lines as PLAIN text (no head
+# cap, no ANSI). User lines start with "> ", assistant lines with "⏺ ".
 # tool_use / tool_result / thinking blocks are dropped — only human-readable
-# text content is shown.
-#
-# Coloring happens AFTER ccsesh_strip_controls (which strips \x1b / ESC). We
-# mark assistant lines with a plain "⏺ " prefix in jq, then awk adds ANSI.
+# text content is shown. Coloring happens in a later pass so the highlighter
+# can still see role prefixes at byte position 0.
 _ccsesh_ui_preview_render_raw() {
   local f="$1"
   jq -Rr '
@@ -58,24 +53,24 @@ _ccsesh_ui_preview_render_raw() {
         )
       else empty end
   ' < "$f" 2>/dev/null \
-    | ccsesh_strip_controls \
-    | awk '
-      # Track the current role so continuation lines of a multi-line
-      # assistant message stay cyan. A "> " prefix flips us back to user;
-      # a "⏺ " prefix flips to assistant.
-      BEGIN { role = "U" }
-      /^⏺ / { role = "A"; printf "\033[36m%s\033[0m\n", $0; next }
-      /^> / { role = "U"; print; next }
-      {
-        if (role == "A") printf "\033[36m%s\033[0m\n", $0
-        else print
-      }
-    '
+    | ccsesh_strip_controls
 }
 
-# Internal: first 30 preview lines (used when no query is active).
+# Internal: apply role-coloring to plain stdin. Assistant lines (and their
+# multi-line continuations) are colored cyan. User lines are left as-is.
+# No query awareness — used by the no-query path.
+_ccsesh_ui_preview_colorize() {
+  awk '
+    BEGIN { role = "U" }
+    /^⏺ / { role = "A"; printf "\033[36m%s\033[0m\n", $0; next }
+    /^> / { role = "U"; print; next }
+    { if (role == "A") printf "\033[36m%s\033[0m\n", $0; else print }
+  '
+}
+
+# Internal: first 30 colored preview lines (used when no query is active).
 _ccsesh_ui_preview_render() {
-  _ccsesh_ui_preview_render_raw "$1" | head -n 30
+  _ccsesh_ui_preview_render_raw "$1" | head -n 30 | _ccsesh_ui_preview_colorize
 }
 
 # Extract header metadata for the preview pane in one jq pass. Emits 6 fields
@@ -214,17 +209,41 @@ ccsesh_ui_preview() {
   body="$(_ccsesh_ui_preview_render_raw "$f")"
   [ -n "$body" ] || return 0
 
-  # Find line number of first match. If none, anchor at line 1 (top).
+  # Scroll-to-match: find the first USER line (or user continuation) that
+  # matches the query. Assistant lines are skipped so we don't anchor on a
+  # match the filter itself can't see. If no user line matches, anchor at
+  # the top.
   local first_line
-  first_line="$(printf '%s\n' "$body" | grep -n -i -m 1 -E -- "$q_regex" 2>/dev/null \
-                | head -n 1 | cut -d: -f1)"
+  first_line="$(printf '%s\n' "$body" | awk -v q="$q_regex" '
+    BEGIN { role = "U" }
+    /^⏺ / { role = "A"; next }
+    /^> / { role = "U" }
+    role == "U" && tolower($0) ~ tolower(q) { print NR; exit }
+  ')"
   [ -n "$first_line" ] || first_line=1
 
+  # Single awk pass: role-color (assistant cyan) + highlight matches on
+  # user lines only. Assistants pass through cyan-wrapped, uncolored by
+  # query — mirrors the list filter which is also user-text-only.
   printf '%s\n' "$body" \
     | tail -n "+$first_line" \
     | head -n 30 \
-    | grep --color=always -iE -- "${q_regex}|$" 2>/dev/null \
-    || printf '%s\n' "$body" | tail -n "+$first_line" | head -n 30
+    | awk -v q="$q_regex" '
+        BEGIN { role = "U" }
+        function hi(line,   out, rest, p, l) {
+          out = ""; rest = line
+          while (match(tolower(rest), tolower(q))) {
+            p = RSTART; l = RLENGTH
+            out = out substr(rest, 1, p - 1) "\033[01;31m" substr(rest, p, l) "\033[0m"
+            rest = substr(rest, p + l)
+          }
+          return out rest
+        }
+        /^⏺ / { role = "A"; printf "\033[36m%s\033[0m\n", $0; next }
+        /^> / { role = "U"; print hi($0); next }
+        role == "A" { printf "\033[36m%s\033[0m\n", $0; next }
+        { print hi($0) }
+      '
 }
 
 # Build the fzf input. Consumes the raw 9-field stream from
