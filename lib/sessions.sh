@@ -39,3 +39,20 @@ ccsesh_session_cwd() {
   [ -n "$out" ] || return 1
   printf '%s\n' "$out"
 }
+
+# Print the .display field of the most recent history.jsonl row with a
+# matching sessionId. Non-zero exit if no match or file missing.
+ccsesh_history_display() {
+  local sid="$1"
+  local hist; hist="$(ccsesh_home)/history.jsonl"
+  [ -r "$hist" ] || return 1
+  local out
+  out="$(jq -Rr --arg sid "$sid" '
+    fromjson?
+    | select(.sessionId == $sid and (.display // "") != "")
+    | [(.timestamp // 0), .display]
+    | @tsv
+  ' < "$hist" 2>/dev/null | sort -rn | head -n 1 | cut -f2-)"
+  [ -n "$out" ] || return 1
+  printf '%s\n' "$out"
+}
