@@ -118,24 +118,28 @@ ccsesh --version
 
 Keybindings inside the picker:
 - `Enter` — `cd` into the session's original project dir and run `claude --resume <id>`.
-- `Ctrl-O` — print a labeled summary of the selected session and exit:
+- `Ctrl-O` — print a labeled summary of the selected session and exit. The box
+  auto-sizes to its content; the `Name:` row is omitted when the session has
+  no custom title.
   ```
-  ╭─ Session ─────────────────────────────
-  │  Session ID:  <sessionId>
-  │  Repo:        <repo-name>
-  │  Name:        <custom-title>          (omitted when the session has no title)
-  │  Path:        <cwd>
-  │
-  │  Resume (cwd-scoped):
-  │    cd -- <cwd> && claude --resume <sessionId>
-  ╰────────────────────────────────────────
+  ╭─ Session ──────────────────────────────────────────────────────────────────╮
+  │  Session ID:  <sessionId>                                                  │
+  │  Repo:        <repo-name>                                                  │
+  │  Name:        <custom-title>                                               │
+  │  Path:        <cwd>                                                        │
+  │                                                                            │
+  │  Resume (cwd-scoped):                                                      │
+  │    cd -- <cwd> && claude --resume <sessionId>                              │
+  ╰────────────────────────────────────────────────────────────────────────────╯
   ```
   Colors drop when stdout is not a TTY (safe for piping into other scripts).
 - `Esc` — quit.
 
+The preview pane on the right shows a labeled header block (`Name`, `ID`, `Repo`, `Path`, `Last`, and a 2-sentence "Session started with:" snippet) followed by the conversation body. User messages appear with a plain `> ` prefix; Claude's replies are prefixed with a cyan `⏺ ` and the whole reply is tinted cyan, so you can scan who said what at a glance. When your query matches something, the body scrolls to the first matching user line and highlights matches — only on user lines, mirroring the filter scope.
+
 ## Search syntax
 
-The fzf query box supports two kinds of input combined freely: **filter tokens** and **free text**. Filters narrow the list; free text then fuzzy-matches the remainder.
+The fzf query box supports two kinds of input combined freely: **filter tokens** and **free text**. Filters narrow the list; free-text terms then substring-match (case-insensitive) against the visible field of whatever survived the filters.
 
 **Filter tokens (GitHub-style):**
 
@@ -145,11 +149,11 @@ The fzf query box supports two kinds of input combined freely: **filter tokens**
 | `since:7d`     | Keep only sessions newer than 7 days. Also accepts `Nh` (hours) and `Nm` (minutes). |
 | `name:NAME`    | Keep only sessions whose custom title contains `NAME` (case-insensitive substring). Sessions without a custom title are excluded. |
 
-**Free-text matching (fzf native, case-insensitive):**
+**Free-text matching (fzf, always case-insensitive, exact/substring by default):**
 
 | Syntax | Meaning |
 |---|---|
-| `foo bar`      | Both terms must match (space = AND). Each term is exact substring by default. |
+| `foo bar`      | Both terms must match (space = AND). Each term is exact substring. |
 | `^foo`         | `foo` must be at the start of the line. |
 | `foo$`         | `foo` must be at the end. |
 | `!foo`         | `foo` must NOT appear (negation). |
@@ -165,7 +169,7 @@ name:bugwatch                       # only sessions you renamed with "bugwatch" 
 ^2026-04-17 repo:neeto-products     # that day, in that repo
 ```
 
-Free text matches against the visible display field, which includes the custom title (if any), the short summary, and the first ~500 chars of user-authored content from the session (dimmed in the list, fully visible in the preview pane). Sessions you have renamed in Claude Code show a green `[title]` badge at the start of the row.
+Free text matches against the visible display field, which includes the custom title (if any), the short summary, and the first ~500 chars of **user-authored** content from the session (dimmed in the list). Assistant replies show up in the preview pane for context, but the filter deliberately ignores them — searching for a phrase Claude said won't surface the session. Sessions you have renamed in Claude Code show a green `[title]` badge at the start of the row.
 
 **Editing the query (fzf readline bindings):**
 
@@ -182,7 +186,7 @@ See the [fzf man page](https://github.com/junegunn/fzf/blob/master/man/man1/fzf.
 
 ## How it works
 
-Claude Code writes one directory per project under `~/.claude/projects/<encoded-path>/`, with one `<session-id>.jsonl` per session. Those encoded path names are lossy (they replace `/` with `-`, which collides with hyphens in real directory names), so `ccsesh` ignores them and reads each session's `cwd` field directly out of the `.jsonl`. Summaries prefer `~/.claude/history.jsonl`'s `display` field (the exact text you typed), falling back to the first non-meta user message in the transcript. The store layout is reverse-engineered and may change; open an issue if something drifts.
+Claude Code writes one directory per project under `~/.claude/projects/<encoded-path>/`, with one `<session-id>.jsonl` per session. Those encoded path names are lossy (they replace `/` with `-`, which collides with hyphens in real directory names), so `ccsesh` ignores them and reads each session's `cwd` field directly out of the `.jsonl`. Summaries prefer `~/.claude/history.jsonl`'s `display` field (the exact text you typed), falling back to the first non-meta user message in the transcript. Custom titles set via Claude Code's rename feature are picked up from the `custom-title` record in the transcript and shown as the green `[title]` badge in the list (and `Name:` in the preview header). The store layout is reverse-engineered and may change; open an issue if something drifts.
 
 ## Uninstall
 
