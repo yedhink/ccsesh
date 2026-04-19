@@ -32,6 +32,7 @@ Options:
   --since <spec>      Only sessions with recency newer than <spec> (Nd, Nh, Nm).
   -h, --help          Show this help.
   -v, --version       Print version.
+  --debug             Write timing + phase info to /tmp/ccsesh-debug.log.
 
 Environment:
   CCSESH_CLAUDE_HOME  Override the Claude home dir (default: \$HOME/.claude).
@@ -45,6 +46,7 @@ require_cmd() {
 ccsesh_main() {
   local mode="interactive"
   local project="" since=""
+  _ccsesh_debug "ccsesh: start argv=$*"
   while [ $# -gt 0 ]; do
     case "$1" in
       __preview)
@@ -66,12 +68,14 @@ ccsesh_main() {
       --since) since="$2"; shift 2 ;;
       -h|--help) usage; exit 0 ;;
       -v|--version) printf 'ccsesh %s\n' "$CCSESH_VERSION"; exit 0 ;;
+      --debug) CCSESH_DEBUG=1; export CCSESH_DEBUG; shift ;;
       --) shift; break ;;
       -*) printf 'ccsesh: unknown flag %q (see --help)\n' "$1" >&2; exit 2 ;;
       *) printf 'ccsesh: unexpected argument %q (see --help)\n' "$1" >&2; exit 2 ;;
     esac
   done
 
+  _ccsesh_debug "ccsesh: parsed mode=$mode project=$project since=$since"
   require_cmd jq 'brew install jq (macOS) or apt/dnf/pacman install jq (Linux)'
 
   local args=()
