@@ -215,11 +215,11 @@ ccsesh_ui_run() {
       --delimiter=$'\t' \
       --with-nth=4 \
       --prompt='ccsesh> ' \
-      --header='enter=resume  ctrl-o=print  ctrl-g=help  esc=quit' \
+      --header='enter=resume  ctrl-o=print  esc=quit
+filters: repo:X  since:Nd|Nh|Nm  name:X
+operators: foo bar (AND)  '\''foo (exact)  ^foo (prefix)  foo$ (suffix)  !foo (negate)' \
       --bind "start:reload($CCSESH_DIR/bin/ccsesh __fzf_feed {q})" \
-      --bind "change:reload($CCSESH_DIR/bin/ccsesh __fzf_feed {q})+change-preview($CCSESH_DIR/bin/ccsesh __preview {2} {1} {q} 2>/dev/null)" \
-      --bind "ctrl-g:change-preview($CCSESH_DIR/bin/ccsesh __help)" \
-      --bind "ctrl-/:change-preview($CCSESH_DIR/bin/ccsesh __help)" \
+      --bind "change:reload($CCSESH_DIR/bin/ccsesh __fzf_feed {q})" \
       --expect=ctrl-o \
       --preview-window='right,50%,wrap' \
       --preview "$CCSESH_DIR/bin/ccsesh __preview {2} {1} {q} 2>/dev/null" \
