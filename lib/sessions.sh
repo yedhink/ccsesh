@@ -145,7 +145,7 @@ ccsesh_session_summary() {
 ccsesh_session_recency() {
   local f="$1"
   local iso
-  iso="$(tail -n 200 "$f" 2>/dev/null | jq -Rr 'fromjson? | .timestamp // empty' 2>/dev/null | sort | tail -n 1)"
+  iso="$(tail -n 200 "$f" 2>/dev/null | jq -Rr 'fromjson? | .timestamp // empty' 2>/dev/null | LC_ALL=C sort | tail -n 1)"
   if [ -n "$iso" ]; then
     local epoch
     epoch="$(ccsesh_iso_to_epoch "$iso")"
