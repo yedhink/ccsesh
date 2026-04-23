@@ -307,7 +307,7 @@ _ccsesh_history_map() {
     | select(.sessionId != null and (.display // "") != "")
     | [(.timestamp // 0), .sessionId, .display] | @tsv
   ' < "$hist" 2>/dev/null \
-    | sort -k1,1rn -t $'\t' \
+    | LC_ALL=C sort -k1,1rn -t $'\t' \
     | awk -F'\t' '!seen[$2]++ { print $2 "\t" $3 }'
 }
 
