@@ -283,7 +283,7 @@ _ccsesh_sessions_list_raw() {
         print
       }
     ' \
-    | sort -t $'\t' -k1,1rn
+    | LC_ALL=C sort -t $'\t' -k1,1rn
 
   rm -f "$hist_map"
   _ccsesh_debug "list: done"
